@@ -1,0 +1,4 @@
+@react-native-picker/picker: Thư viện tạo danh sách lựa chọn dạng vòng quay xổ xuống cho các ô năm sinh, chiều cao, cân nặng.
+react-native-chart-kit: Thư viện vẽ biểu đồ (xuất hiện trong log lỗi lúc bạn cài Picker).
+@react-native-async-storage/async-storage: Thư viện lưu trữ dữ liệu cục bộ trên điện thoại (đã xuất hiện trong code màn hình Onboarding của bạn).
+@react-navigation/native & @react-navigation/bottom-tabs: Các thư viện quản lý điều hướng, chuyển trang và tạo thanh tab bar dưới cùng của ứng dụng.

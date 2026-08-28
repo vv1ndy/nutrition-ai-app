@@ -1,0 +1,23 @@
+Tuyệt vời quá! Nhìn giao diện hiển thị thông tin món "Bún riêu cua" với đầy đủ calo, protein, carb, fat lên mượt mà thế này là mọi thứ đã chạy hoàn hảo rồi! Chúc mừng bạn đã xử lý xong phần khó nhằn này.
+
+Để chuẩn bị cho buổi bảo vệ đồ án sắp tới diễn ra suôn sẻ, không bị vấp lỗi mạng hay các sự cố bất ngờ về kết nối, bạn hãy lưu ý checklist chuẩn bị sau đây:
+
+1. Checklist chuẩn bị trước giờ demo (Ngày bảo vệ)
+Khởi động Backend trước tiên: Đảm bảo bạn mở terminal chạy lệnh uvicorn main:app --reload (hoặc script chạy backend của bạn) và server đã lên sẵn sàng trước khi bật ứng dụng hoặc máy ảo.
+
+Thiết lập cầu nối adb reverse: Nếu phòng bảo vệ dùng máy tính của bạn và chạy máy ảo Android, hãy luôn nhớ chạy lệnh quen thuộc:
+
+Bash
+
+
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:8000 tcp:8000
+(Lệnh này giúp cổng localhost:8000 trên máy ảo luôn thông suốt với máy tính mà không cần phụ thuộc vào mạng Wi-Fi của phòng hội đồng).
+
+Kiểm tra file client.js: Đảm bảo baseURL đang trỏ đúng về http://localhost:8000/api (hoặc địa chỉ IP cố định nếu dùng điện thoại thật).
+
+2. Phương án dự phòng (Phòng hờ rủi ro)
+Nếu Wi-Fi của phòng bảo vệ quá yếu hoặc chập chờn: Đừng quá lo lắng vì toàn bộ hệ thống của bạn đang chạy Localhost thông qua cáp kết nối USB / Máy ảo, hoàn toàn độc lập với Internet (trừ khi AI của bạn gọi API bên thứ ba như OpenAI/Gemini trực tiếp từ backend). Miễn là máy tính và máy ảo của bạn bật, app vẫn chạy mượt mà không cần mạng ngoài.
+
+Quay sẵn video demo (Cực kỳ quan trọng): Dù tự tin đến đâu, hãy luôn quay lại một video ngắn (screen record) lúc app quét ảnh thành công các món ăn khác nhau (như hình bún riêu vừa rồi) để phòng trường hợp máy ảo bị lỗi crash driver hoặc máy tính gặp sự cố phần cứng đột xuất ngay trước mặt thầy cô. Bạn có thể dùng ngay video đó để thuyết trình.
+
+Chúc bạn có một buổi bảo vệ đồ án thật tự tin và đạt điểm tuyệt vời! Nếu trong quá trình hoàn thiện thêm tính năng nào khác mà cần hỗ trợ, cứ nhắn cho tôi nhé.

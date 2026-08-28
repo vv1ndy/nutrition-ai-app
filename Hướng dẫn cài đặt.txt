@@ -1,0 +1,100 @@
+## ⚙️ Huong dan cai dat & Khoi chay du an (Installation Guide)
+
+### 1. Yeu cau he thong (Prerequisites)
+Truoc khi cai dat, hay dam bao may tinh cua ban da cai dat san cac phan mem sau:
+* Python (phien ban 3.9 tro len)
+* Node.js (phien ban 18.x tro len) va npm / yarn
+* Microsoft SQL Server va SSMS (SQL Server Management Studio)
+* Ung dung Expo Go tren thiet bi di dong (iOS/Android) de chay thu nghiem.
+
+---
+
+### 2. Cai dat May chu (Backend - FastAPI)
+
+Backend duoc xay dung bang Python va FastAPI.
+
+Buoc 1: Di chuyen vao thu muc backend va tao moi truong ao (Virtual Environment):
+cd backend
+python -m venv venv
+
+Buoc 2: Kich hoat moi truong ao:
+* Tren Windows: venv\Scripts\activate
+* Tren macOS/Linux: source venv/bin/activate
+
+Buoc 3: Cai dat cac thu vien can thiet (requirements.txt). Chay lenh:
+pip install -r requirements.txt
+
+Danh sach cac thu vien loi (Core Dependencies):
+* fastapi, uvicorn[standard] (Khung may chu bat dong bo)
+* SQLAlchemy, pyodbc (ORM va Driver ket noi SQL Server)
+* google-generativeai (Tich hop mo hinh Gemini AI Vision & Text)
+* cloudinary (Luu tru va toi uu hoa hinh anh dam may)
+* PyJWT, passlib[bcrypt], python-multipart (Xac thuc va ma hoa mat khau)
+* requests, python-dotenv (Goi Strava API va quan ly bien moi truong)
+
+Buoc 4: Khoi tao co so du lieu:
+* Mo SSMS, tao mot database moi ten la NutriMateDB.
+* Cau hinh chuoi ket noi (Connection String) trong file .env (Xem phan 4).
+
+Buoc 5: Khoi chay Backend Server:
+uvicorn main:app --reload
+
+Server se chay tai dia chi: http://localhost:8000
+
+---
+
+### 3. Cai dat Ung dung di dong (Frontend - React Native)
+
+Frontend duoc phat trien bang React Native tren moi truong Expo.
+
+Buoc 1: Di chuyen vao thu muc frontend:
+cd frontend
+
+Buoc 2: Cai dat cac goi thu vien (Dependencies):
+npm install
+# hoac
+yarn install
+
+Danh sach cac goi thu vien loi (Core Packages):
+* expo, react-native (Framework nen tang)
+* @react-navigation/native, @react-navigation/stack (Dieu huong man hinh)
+* expo-image-picker, expo-image-manipulator (Truy cap Camera, Thu vien anh va nen anh)
+* axios (Xu ly cac HTTP Request goi den Backend)
+* @react-native-async-storage/async-storage (Luu tru JWT Token va phien dang nhap)
+
+Buoc 3: Khoi chay ung dung:
+npx expo start
+
+He thong se hien thi mot ma QR. Mo ung dung Expo Go tren dien thoai, quet ma QR de trai nghiem ung dung.
+
+---
+
+### 4. Cau hinh Bien moi truong (.env)
+
+De he thong hoat dong, ban can tao cac file .env tai thu muc goc cua ca Backend va Frontend voi cau truc nhu sau:
+
+Tai thu muc backend/.env:
+# Database Configuration
+DATABASE_URL="mssql+pyodbc://<username>:<password>@<server_name>/NutriMateDB?driver=ODBC+Driver+17+for+SQL+Server"
+
+# Security
+SECRET_KEY="your_jwt_secret_key"
+ALGORITHM="HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES=43200
+
+# Google Gemini AI
+GEMINI_API_KEY="your_google_gemini_api_key"
+
+# Cloudinary (Image Storage)
+CLOUDINARY_CLOUD_NAME="your_cloud_name"
+CLOUDINARY_API_KEY="your_api_key"
+CLOUDINARY_API_SECRET="your_api_secret"
+
+# Strava API (OAuth 2.0)
+STRAVA_CLIENT_ID="your_strava_client_id"
+STRAVA_CLIENT_SECRET="your_strava_client_secret"
+
+
+Tai thu muc frontend/.env:
+# Tro ve IP cua may tinh dang chay Backend (Luu y: Khong dung localhost khi test tren thiet bi di dong that)
+EXPO_PUBLIC_API_URL="http://<YOUR_IPv4_ADDRESS>:8000/api"

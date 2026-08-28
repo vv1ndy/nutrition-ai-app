@@ -1,0 +1,24 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+pyodbc==5.2.0
+cryptography==44.0.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.20
+pydantic-settings==2.7.0
+google-generativeai==0.8.4
+pillow==11.1.0
+python-dotenv==1.0.1
+alembic==1.14.0
+//////////////////////////////////////
+fastapi: Framework cốt lõi để xây dựng các API cho ứng dụng.  
+sqlalchemy: Thư viện ORM để kết nối và thao tác trực tiếp với cơ sở dữ liệu SQL Server.  
+pydantic: Dùng để tạo các form (BaseModel) kiểm tra và xác thực dữ liệu gửi lên từ App.  
+cloudinary: Thư viện xử lý việc upload và lưu trữ ảnh món ăn lên đám mây.  
+google-generativeai: Thư viện chính thức của Google để kết nối và gọi mô hình Gemini AI phân tích món ăn.  
+passlib[bcrypt]: Dùng để băm (mã hóa) mật khẩu người dùng trước khi lưu vào Database.  
+python-jose: Thư viện dùng để tạo và giải mã JWT (JSON Web Token) cho chức năng đăng nhập.  
+uvicorn: Máy chủ Web ASGI dùng để chạy ứng dụng FastAPI của bạn (uvicorn main:app --reload).
+httpx
