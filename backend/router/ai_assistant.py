@@ -53,7 +53,7 @@ def suggest_meal(
     fat_con_lai = round(target_fat - consumed_fat, 1)
     # 3. Xây dựng Kịch bản Calo cho Prompt
     if calo_con_lai > 300:
-        calo_prompt = f"- Mục tiêu: Thiết kế món ăn sao cho TỔNG calo của từng gợi ý không vượt quá {calo_con_lai} kcal."
+        calo_prompt = f"- Mục tiêu: Thiết kế món ăn sao cho calo của từng gợi ý không vượt quá {calo_con_lai} kcal."
     elif calo_con_lai > 0:
         calo_prompt = f"- CẢNH BÁO: Khách hàng chỉ còn {calo_con_lai} kcal trong ngày. BẮT BUỘC chỉ gợi ý các món RẤT NHẸ (salad, canh trong, trái cây ít ngọt) để không vượt quá giới hạn này."
     else:
@@ -83,7 +83,7 @@ Yêu cầu trả về JSON, không giải thích thêm, không dùng khối lệ
     "bua_an": "{bua_an}",
     "goi_y": [
         {{
-            "ten_mon_an": "<Tên món ăn chi tiết, ví dụ: Cơm trắng + Thịt luộc + Canh rau ngót>",
+            "ten_mon_an": "<Tên món ăn chi tiết, , đi kèm khẩu phần khuyến nghị, ví dụ: 1 bát cơm vừa (khoảng 200g), 100g thịt, 1 bát canh rau ngót (khoảng 150ml)>",
             "meal_calories": <số nguyên ước tính, đơn vị kcal>,
             "meal_protein_g": <số thực ước tính, đơn vị gam>,
             "meal_carb_g": <số thực ước tính, đơn vị gam>,

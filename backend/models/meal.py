@@ -2,7 +2,11 @@ from sqlalchemy import Column, Integer, String, DECIMAL, Date, DateTime, Foreign
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
+import pytz
+VN_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
 
+def get_vn_time():
+    return datetime.now(VN_TZ)
 class Meal(Base):
     __tablename__ = "meal"
 
@@ -19,7 +23,7 @@ class Meal(Base):
     meal_fat_g = Column(DECIMAL(6, 2), default=0)
     image_url = Column(Text)
     loi_khuyen = Column(Unicode(1024), nullable=True)
-    create_at = Column(DateTime, default=datetime.utcnow)
+    create_at = Column(DateTime, default=get_vn_time)
 
     # Mối quan hệ ngược lại với User và Food
     user = relationship("User", back_populates="meals")

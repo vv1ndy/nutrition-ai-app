@@ -9,11 +9,11 @@ class MealCreate(BaseModel):
     loai_bua_an: str | None = None # BREAKFAST, LUNCH, DINNER, SNACK
     ngay_an: date
     ten_mon_an: str
-    so_luong_khau_phan: Optional[Decimal] = Decimal("1.0")
+    so_luong_khau_phan: Decimal = Decimal("1.0")
     meal_calories: Decimal
-    meal_protein_g: Optional[Decimal] = Decimal("0.0")
-    meal_carb_g: Optional[Decimal] = Decimal("0.0")
-    meal_fat_g: Optional[Decimal] = Decimal("0.0")
+    meal_protein_g: Decimal = Decimal("0.0")
+    meal_carb_g: Decimal = Decimal("0.0")
+    meal_fat_g: Decimal = Decimal("0.0")
     image_url: Optional[str] = None
     loi_khuyen: Optional[str] = None
 

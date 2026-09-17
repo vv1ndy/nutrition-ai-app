@@ -16,71 +16,24 @@ const screenWidth = Dimensions.get("window").width;
 export default function ExerciseScreen({ navigation }) {
   const { userToken } = useContext(AuthContext);
   
-  // State quản lý danh sách bài tập
   const [activities, setActivities] = useState([]);
   const [groupedActivities, setGroupedActivities] = useState([]);
-  
-  // --- THÊM: STATE CHO TỪ ĐIỂN BÀI TẬP ---
   const [exerciseList, setExerciseList] = useState([]); 
 
-  // Phân trang
   const [skip, setSkip] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // Form thủ công
   const [showManualForm, setShowManualForm] = useState(false);
   const [exerciseKey, setExerciseKey] = useState('');
   const [durationMinutes, setDurationMinutes] = useState('');
   const [isExchanging, setIsExchanging] = useState(false); 
 
-  // Biểu đồ
   const [todayBurned, setTodayBurned] = useState(0);
   const [weeklyChartData, setWeeklyChartData] = useState({ labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], data: [0,0,0,0,0,0,0] });
 
-  const translateActivityName = (name) => {
-    // ... (Giữ nguyên Dictionary dịch tiếng Việt của bạn[cite: 5])
-    const dictionary = {
-      'Di bo binh thuong': 'Đi bộ bình thường',
-      'Di bo nhanh': 'Đi bộ nhanh',
-      'Chay bo vua': 'Chạy bộ vừa',
-      'Chay bo nhanh': 'Chạy bộ nhanh',
-      'Dap xe nhe': 'Đạp xe nhẹ',
-      'Dap xe nang': 'Đạp xe nặng',
-      'Boi loi nhe': 'Bơi lội nhẹ',
-      'Boi loi nhanh': 'Bơi lội nhanh',
-      'Cheo sup': 'Chèo SUP',
-      'Yoga': 'Yoga',
-      'Aerobic': 'Aerobic',
-      'Tap ta nhe': 'Tập tạ nhẹ',
-      'Tap ta nang': 'Tập tạ nặng',
-      'Bodyweight': 'Bodyweight',
-      'Hiit': 'HIIT',
-      'May elip': 'Máy chạy Elip',
-      'Leo cau thang': 'Leo cầu thang',
-      'Cau long': 'Cầu lông',
-      'Tennis': 'Tennis',
-      'Bong ban': 'Bóng bàn',
-      'Bong da': 'Bóng đá',
-      'Bong ro': 'Bóng rổ',
-      'Bong chuyen': 'Bóng chuyền',
-      'Bida': 'Bida',
-      'Bowling': 'Bowling',
-      'Golf': 'Golf',
-      'Nhay day vua': 'Nhảy dây vừa',
-      'Nhay day nhanh': 'Nhảy dây nhanh',
-      'Da cau': 'Đá cầu',
-      'Lac vong': 'Lắc vòng',
-      'Truot patin': 'Trượt patin',
-      'Zumba': 'Zumba',
-      'Dam bao cat': 'Đấm bao cát',
-      'Vo thuat': 'Võ thuật'
-    };
-    return dictionary[name] || name; 
-  };
-
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'nutrition-ai-app' });
-
+  const redirectUri = AuthSession.makeRedirectUri();
+//Hàm mở AuthSession
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
       clientId: STRAVA_CLIENT_ID,
@@ -91,13 +44,12 @@ export default function ExerciseScreen({ navigation }) {
     { authorizationEndpoint: 'https://www.strava.com/oauth/mobile/authorize' }
   );
 
-  // --- THÊM: HÀM FETCH TỪ ĐIỂN TỪ BACKEND ---
   const fetchActivityDictionary = async () => {
     try {
       const res = await apiClient.get('/health/activity-dic');
       setExerciseList(res.data);
       if(res.data.length > 0 && !exerciseKey) {
-          setExerciseKey(res.data[0].value); // Set mặc định item đầu tiên
+          setExerciseKey(res.data[0].value); 
       }
     } catch (error) {
       console.log("Lỗi tải từ điển bài tập:", error);
@@ -135,10 +87,14 @@ export default function ExerciseScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      fetchActivityDictionary();
-      setSkip(0);
-      fetchActivities(0, false);
-      fetchWeeklyChart();
+      const loadDataSequentially = async () => {
+        await fetchActivityDictionary();
+        setSkip(0);
+        await fetchActivities(0, false);
+        await fetchWeeklyChart();
+      };
+      
+      loadDataSequentially();
     }, [])
   );
 
@@ -150,14 +106,11 @@ export default function ExerciseScreen({ navigation }) {
     }
   }, [response]);
 
-  // --- CẬP NHẬT: LỌC HIỂN THỊ CHỈ TRONG 3 NGÀY ---
   useEffect(() => {
     if (activities && activities.length > 0) {
       const groups = {};
-      
-      // Tính mốc thời gian của 3 ngày trước
       const limitDate = new Date();
-      limitDate.setDate(limitDate.getDate() - 2); // Hôm nay (0), hôm qua (-1), hôm kia (-2) = 3 ngày
+      limitDate.setDate(limitDate.getDate() - 2); 
       limitDate.setHours(0, 0, 0, 0);
 
       activities.forEach(act => {
@@ -165,7 +118,6 @@ export default function ExerciseScreen({ navigation }) {
         const datePart = act.start_date.split('T')[0];
         const actDate = new Date(datePart);
         
-        // Chỉ xử lý những dữ liệu >= limitDate
         if (actDate >= limitDate) {
             if (!groups[datePart]) groups[datePart] = [];
             groups[datePart].push(act);
@@ -181,14 +133,14 @@ export default function ExerciseScreen({ navigation }) {
       setGroupedActivities([]);
     }
   }, [activities]);
-
   const sendCodeToBackend = async (code) => {
     try {
       await apiClient.post('/health/strava-exchange', { code: code });
       Alert.alert('Thành công', 'Đã kết nối Strava! Đang tải dữ liệu...');
+      
       setSkip(0);
-      fetchActivities(0, false);
-      fetchWeeklyChart();
+      await fetchActivities(0, false);
+      await fetchWeeklyChart();
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể kết nối với Strava');
     } finally {
@@ -209,9 +161,10 @@ export default function ExerciseScreen({ navigation }) {
       
       setDurationMinutes('');
       setShowManualForm(false);
+      
       setSkip(0);
-      fetchActivities(0, false);
-      fetchWeeklyChart();
+      await fetchActivities(0, false);
+      await fetchWeeklyChart();
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể tính toán calo bài tập');
     }
@@ -222,49 +175,71 @@ export default function ExerciseScreen({ navigation }) {
     return `Đổ mồ hôi, sôi calo! Ghi lại bài tập để WiKi cộng thêm calo cho bạn ăn ngon nhé! 💪🥝`;
   };
 
-  // --- THÊM: HÀM LẤY ICON ĐỘNG TỪ DICTIONARY ---
- const getDynamicIcon = (act) => {
-    // 1. Chặn lỗi nếu act bị null/undefined đột xuất
+  // HÀM LẤY ICON ĐỒNG BỘ  VỚI DATABASE
+  const getDynamicIcon = (act) => {
     if (!act) return '🏋️'; 
 
-    // 2. KHAI BÁO BIẾN NAMELOWER Ở ĐÂY (Thiếu dòng này sẽ gây lỗi ReferenceError)
-    const nameLower = (act.name || '').toLowerCase();
-
-    // 3. Xử lý bài tập đồng bộ từ Strava
-    if (act.type === 'STRAVA') {
-      if (nameLower.includes('bơi') || nameLower.includes('swim')) return '🏊';
-      if (nameLower.includes('chạy') || nameLower.includes('run')) return '🏃';
-      if (nameLower.includes('đi bộ') || nameLower.includes('walk')) return '🚶';
-      if (nameLower.includes('đạp xe') || nameLower.includes('ride') || nameLower.includes('bike')) return '🚴';
-      if (nameLower.includes('yoga')) return '🧘';
-      if (nameLower.includes('tạ') || nameLower.includes('gym') || nameLower.includes('weight')) return '💪';
-      if (nameLower.includes('cầu lông') || nameLower.includes('badminton')) return '🏸';
-      if (nameLower.includes('bóng đá') || nameLower.includes('football') || nameLower.includes('soccer')) return '⚽';
-      
-      return '🔥'; // Icon mặc định cho Strava 
-    } 
-    
-    // 4. Xử lý bài tập thủ công (Thử tìm khớp chính xác với CSDL mới)
-    const translatedName = translateActivityName(act.name);
-    const foundAct = exerciseList.find(e => e.name === translatedName);
+    // 1. Nếu là bài tập nhập thủ công, ưu tiên khớp chính xác tên với Database
+    const foundAct = exerciseList.find(e => e.name === act.name);
     if (foundAct && foundAct.icon) {
         return foundAct.icon;
     }
 
-    // 5. Fallback (Cứu cánh) cho các dữ liệu cũ đã lưu trước khi đổi tên
-    const searchString = (nameLower + ' ' + translatedName).toLowerCase();
+    // 2. Nếu không khớp hoàn toàn (như tên từ Strava: "Morning Run"), quét từ khóa linh hoạt
+    const nameLower = (act.name || '').toLowerCase();
+    
+    // Hàm phụ tìm icon trong Database thông qua 'value' (ví dụ: 'chay_bo', 'dap_xe')
+    const getIconFromDB = (dbKey, fallbackIcon) => {
+        const match = exerciseList.find(e => e.value.includes(dbKey));
+        return match ? match.icon : fallbackIcon;
+    };
 
-    if (searchString.includes('bơi') || searchString.includes('swim')) return '🏊';
-    if (searchString.includes('hiit')) return '⏱️';
-    if (searchString.includes('bóng') || searchString.includes('bong da')) return '⚽';
-    if (searchString.includes('cầu lông') || searchString.includes('cau long')) return '🏸';
-    if (searchString.includes('chạy') || searchString.includes('chay')) return '🏃';
-    if (searchString.includes('đạp xe') || searchString.includes('dap xe')) return '🚴';
-    if (searchString.includes('đi bộ') || searchString.includes('di bo')) return '🚶';
-    if (searchString.includes('tạ') || searchString.includes('gym') || searchString.includes('ta')) return '💪';
+// --- CÁC MÔN PHỔ BIẾN (CARDIO) ---
+    if (nameLower.includes('chạy') || nameLower.includes('run')) return getIconFromDB('chay_bo_vua', '🏃');
+    if (nameLower.includes('đi bộ') || nameLower.includes('walk')) return getIconFromDB('di_bo_binh_thuong', '🚶');
+    if (nameLower.includes('đạp xe') || nameLower.includes('ride') || nameLower.includes('bike') || nameLower.includes('cycling')) return getIconFromDB('dap_xe_nhe', '🚴');
+    if (nameLower.includes('bơi') || nameLower.includes('swim')) return getIconFromDB('boi_loi_nhe', '🏊');
+    
+    // --- CÁC MÔN THỂ HÌNH & TẬP LUYỆN KHÁC ---
+    if (nameLower.includes('tạ') || nameLower.includes('gym') || nameLower.includes('weight')) return getIconFromDB('tap_ta_nhe', '💪');
+    if (nameLower.includes('bodyweight') || nameLower.includes('kháng lực')) return getIconFromDB('bodyweight', '🤸');
+    if (nameLower.includes('hiit') || nameLower.includes('crossfit')) return getIconFromDB('hiit', '⏱️');
+    if (nameLower.includes('yoga')) return getIconFromDB('yoga', '🧘');
+    if (nameLower.includes('pilates')) return getIconFromDB('pilates', '🧘‍♀️');
+    if (nameLower.includes('zumba') || nameLower.includes('nhảy')) return getIconFromDB('zumba', '🕺');
+    if (nameLower.includes('aerobic')) return getIconFromDB('aerobic', '💃');
+    
+    // --- THỂ THAO VỚI VỢT / GẬY ---
+    if (nameLower.includes('cầu lông') || nameLower.includes('badminton')) return getIconFromDB('cau_long', '🏸');
+    if (nameLower.includes('tennis') || nameLower.includes('quần vợt')) return getIconFromDB('tennis', '🎾');
+    if (nameLower.includes('bóng bàn') || nameLower.includes('ping pong') || nameLower.includes('table tennis')) return getIconFromDB('bong_ban', '🏓');
+    if (nameLower.includes('pickleball')) return getIconFromDB('pickleball', '🏓');
+    if (nameLower.includes('golf')) return getIconFromDB('golf', '⛳');
+    
+    // --- THỂ THAO ĐỒNG ĐỘI (BÓNG) ---
+    if (nameLower.includes('bóng đá') || nameLower.includes('football') || nameLower.includes('soccer')) return getIconFromDB('bong_da', '⚽');
+    if (nameLower.includes('bóng rổ') || nameLower.includes('basketball')) return getIconFromDB('bong_ro', '🏀');
+    if (nameLower.includes('bóng chuyền') || nameLower.includes('volleyball')) return getIconFromDB('bong_chuyen', '🏐');
+    
+    // --- CÁC MÔN KHÁC & VẬN ĐỘNG NHẸ ---
+    if (nameLower.includes('nhảy dây') || nameLower.includes('jump rope')) return getIconFromDB('nhay_day_vua', '🪢');
+    if (nameLower.includes('đá cầu')) return getIconFromDB('da_cau', '🦶');
+    if (nameLower.includes('lắc vòng')) return getIconFromDB('lac_vong', '⭕');
+    if (nameLower.includes('elip') || nameLower.includes('elliptical')) return getIconFromDB('may_elip', '⛷️');
+    if (nameLower.includes('leo cầu thang') || nameLower.includes('stair')) return getIconFromDB('leo_cau_thang', '🧗');
+    
+    // --- VÕ THUẬT & TRƯỢT/CHÈO ---
+    if (nameLower.includes('võ') || nameLower.includes('martial arts')) return getIconFromDB('vo_thuat', '🥋');
+    if (nameLower.includes('boxing') || nameLower.includes('đấm bốc') || nameLower.includes('bao cát')) return getIconFromDB('dam_bao_cat', '🥊');
+    if (nameLower.includes('patin') || nameLower.includes('roller') || nameLower.includes('inline skate')) return getIconFromDB('truot_patin', '🛼');
+    if (nameLower.includes('trượt băng') || nameLower.includes('ice skate')) return getIconFromDB('truot_bang', '⛸️');
+    if (nameLower.includes('chèo') || nameLower.includes('rowing') || nameLower.includes('sup') || nameLower.includes('kayak')) return getIconFromDB('cheo_sup', '🚣');
+    
+    // --- GIẢI TRÍ ---
+    if (nameLower.includes('bida') || nameLower.includes('billiards') || nameLower.includes('pool')) return getIconFromDB('bida', '🎱');
+    if (nameLower.includes('bowling')) return getIconFromDB('bowling', '🎳');
 
-    return '🏋️'; // Icon mặc định cuối cùng
-    return '🏋️'; // Icon mặc định cuối cùng
+    return act.type === 'STRAVA' ? '🔥' : '🏋️';
   };
 
   const chartConfig = {
@@ -288,7 +263,6 @@ export default function ExerciseScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* ... (Giữ nguyên Mascot Container & Biểu đồ) */}
       <View style={styles.mascotContainer}>
         <Image source={require('../../../assets/mascot.png')} style={styles.mascotImg} resizeMode="contain" />
         <View style={styles.bubble}>
@@ -328,7 +302,6 @@ export default function ExerciseScreen({ navigation }) {
           <Text style={styles.formTitle}>Chọn môn thể thao:</Text>
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipContainer} contentContainerStyle={{ paddingRight: 20 }}>
-            {/* SỬ DỤNG DANH SÁCH LẤY TỪ BACKEND THAY VÌ HARCODE */}
             {exerciseList.map((ex) => (
               <TouchableOpacity
                 key={ex.value}
@@ -360,7 +333,6 @@ export default function ExerciseScreen({ navigation }) {
         </View>
       )}
 
-      {/* TIMELINE HIỂN THỊ TRONG 3 NGÀY MỚI NHẤT */}
       {groupedActivities.length === 0 ? (
         <View style={styles.emptyBox}>
           <Text style={styles.emptyText}>Chưa có dữ liệu bài tập trong 3 ngày gần đây. Hãy đứng lên và vận động thôi nào! 🏃‍♀️</Text>
@@ -393,13 +365,10 @@ export default function ExerciseScreen({ navigation }) {
                 <View key={actIndex} style={styles.activityCard}>
                   <View style={styles.activityLeft}>
                     <View style={styles.iconContainer}>
-                       {/* THAY ĐỔI: GỌI HÀM getDynamicIcon THAY VÌ LOGIC TOÁN TỬ 3 NGÔI CŨ */}
                        <Text style={styles.actIcon}>{getDynamicIcon(act)}</Text>
                     </View>
                     <View style={styles.actInfo}>
-                      <Text style={styles.actName}>
-                        {translateActivityName(act.name)}
-                      </Text>
+                      <Text style={styles.actName}>{act.name}</Text>
                       {act.distance > 0 && (
                         <Text style={styles.actDetail}>📏 {(act.distance / 1000).toFixed(2)} km</Text>
                       )}
@@ -440,7 +409,6 @@ export default function ExerciseScreen({ navigation }) {
   );
 }
 
-// ... (Các Styles css ở cuối giữ nguyên toàn bộ như[cite: 5])
 const styles = StyleSheet.create({
   container: { padding: 20, backgroundColor: '#F1F8E9', flexGrow: 1, paddingTop: 40 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },

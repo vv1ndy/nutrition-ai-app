@@ -1,7 +1,11 @@
 from sqlalchemy import Column, Integer, String, DECIMAL, DateTime, Unicode
 from sqlalchemy.orm import relationship
 from datetime import datetime
+import pytz
+VN_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
 
+def get_vn_time():
+    return datetime.now(VN_TZ)
 # Import Base từ file database.py của bạn. 
 # Tùy thuộc vào vị trí file database.py, bạn có thể cần chỉnh lại đường dẫn (ví dụ: from ..database import Base)
 from database import Base
@@ -19,7 +23,7 @@ class User(Base):
     chieu_cao = Column(DECIMAL(5, 2), nullable=True)
     can_nang = Column(DECIMAL(5, 2), nullable=True)
     muc_do_van_dong = Column(Unicode(20), nullable=True)
-    ngay_tao = Column(DateTime, default=datetime.utcnow)
+    ngay_tao = Column(DateTime, default=get_vn_time)
     benh_nen = Column(Unicode(255), nullable=True)  # Trong SQLAlchemy, String không chỉ định độ dài tương đương NVARCHAR(MAX)
     di_ung = Column(Unicode(255), nullable=True)
     role = Column(String(20), default="USER")

@@ -151,15 +151,15 @@ def get_my_profile(
         "muc_do_van_dong": user.muc_do_van_dong,
         "di_ung": user.di_ung,
         "benh_nen": user.benh_nen,
-        "muc_tieu_can_nang": target.muc_tieu_can_nang if target else "Giữ cân",
+        "muc_tieu_can_nang": target.muc_tieu_can_nang,
         "water_target_ml": target.water_target_ml if target else 2000,
-        "tdee": target.target_calories, 
-        "ngay_bat_dau": target.ngay_bat_dau,
+        "tdee": target.target_calories if target else 2000, 
+        "ngay_bat_dau": target.ngay_bat_dau if target else None,
         "ngay_ket_thuc": target.ngay_ket_thuc if target else None,
         "macros": {
-            "carb": target.target_carb,
-            "protein": target.target_protein,
-            "fat": target.target_fat
+            "carb": target.target_carb if target else 0,
+            "protein": target.target_protein if target else 0,
+            "fat": target.target_fat if target else 0
         } if target else None
     }
 # =========================================================

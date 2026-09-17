@@ -24,7 +24,7 @@ class TargetNutriResponse(TargetNutriBase):
 # --- Nutri (Tổng hợp dinh dưỡng) ---
 class NutriCreate(BaseModel):
     user_id: int
-    date_log: date # Tránh trùng keyword 'date'
+    date_log: date 
     total_calories: Optional[Decimal] = Decimal("0.0")
     total_protein: Optional[Decimal] = Decimal("0.0")
     total_carb: Optional[Decimal] = Decimal("0.0")

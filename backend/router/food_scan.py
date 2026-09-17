@@ -15,17 +15,13 @@ from models.food import Food  # 🔥 Thêm import model Food
 from security import get_current_user  
 
 router = APIRouter(prefix="/api/food", tags=["Scan AI Món Ăn"])
-
+load_dotenv()
 # Cấu hình Cloudinary
 cloudinary.config(
     cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key = os.getenv("CLOUDINARY_API_KEY"),
     api_secret = os.getenv("CLOUDINARY_API_SECRET")
 )
-
-# Cấu hình Gemini AI
-load_dotenv()
-
 # Lấy mã API một cách an toàn
 my_api_key = os.getenv("GEMINI_API_KEY")
 
@@ -66,6 +62,7 @@ async def scan_food_image(
         Dựa vào các thông tin trên, hãy trả về kết quả CHÍNH XÁC dưới dạng chuỗi JSON thuần túy (không kèm markdown như ```json) với cấu trúc sau:
         {{
             "ten_mon": "Tên món ăn tiếng Việt",
+            "khau_phan_chuan": "Định lượng chuẩn cho 1 khẩu phần bằng gram hoặc ml để người dùng dễ hình dung (Ví dụ: '1 bát vừa (khoảng 300g)', '1 ly (250ml)', '1 đĩa vừa (200g)', '1 cái (150g)')",
             "calories": số thực chuẩn cho 1 khẩu phần (kcal),
             "protein_g": số thực (gram),
             "carb_g": số thực (gram),
@@ -73,25 +70,27 @@ async def scan_food_image(
             "loi_khuyen": "Lời khuyên ngắn gọn (2-3 câu). Nếu món ăn vi phạm dị ứng hoặc không tốt cho bệnh nền, phải CẢNH BÁO NGHIÊM KHẮC. Đánh giá xem lượng calo của món ăn có phù hợp với calo còn lại không."
         }}
         """
-        
+        #Gửi ảnh lên Gemini
         image_part = {
-            "mime_type": file.content_type or "image/jpeg",
-            "data": image_bytes
+            "mime_type": file.content_type or "image/jpeg",# Thông tin định dạng ảnh
+            "data": image_bytes# Nội dung ảnh dưới dạng dữ liệu thô
         }
         
         response = model.generate_content([prompt, image_part])
-        text_response = response.text.strip()
-        
+        text_response = response.text.strip()#Xóa dấu cách,dấu tab, dấu xuống dòng bị thừa ở đầu và cuối câu
+        #Dọn dẹp markdown => bóc tách lấy dữ liệu
         if text_response.startswith("```"):
             text_response = text_response.split("```")[1]
             if text_response.startswith("json"):
                 text_response = text_response[4:]
                 
-        food_info = json.loads(text_response.strip())
+        food_info = json.loads(text_response.strip())#Dịch thành kiểu dữ liệu dictionary của python
         
-        # 3. Khối logic tự động lưu món mới vào bảng Food (Giữ nguyên của bạn)
+        # 3. Khối logic tự động lưu món mới vào bảng Food 
         try:
             ten_mon = food_info.get("ten_mon", "")
+            loi_khuyen = food_info.get("loi_khuyen","")
+            kich_thuoc_khau_phan = food_info.get("khau_phan_chuan","1 phần tiêu chuẩn")
             if ten_mon:
                 raw_search = " ".join(ten_mon.lower().split())
                 unaccent_search = remove_vietnamese_accents(raw_search)
@@ -104,18 +103,28 @@ async def scan_food_image(
                 ).first()
 
                 if not existing_food:
+                    #1. Tạo món mới trong food
                     new_food = Food(
                         ten_mon=ten_mon,
                         ten_chuan_hoa=unaccent_search,
-                        don_vi="phần",
+                        don_vi=kich_thuoc_khau_phan,
                         kich_thuoc_khau_phan=1.0,
                         calories=float(food_info.get("calories", 0.0)),
                         protein_g=float(food_info.get("protein_g", 0.0)),
                         carb_g=float(food_info.get("carb_g", 0.0)),
-                        fat_g=float(food_info.get("fat_g", 0.0))
+                        fat_g=float(food_info.get("fat_g", 0.0)),
+                        loi_khuyen=loi_khuyen
                     )
                     db.add(new_food)
                     db.commit()
+                    db.refresh(new_food)     # 2. Lấy ID vừa tạo cập nhật ngược lại vào biến new_food
+                    
+                    # 3. Gắn ID mới vào JSON trả về
+                    food_info["food_id"] = new_food.food_id  
+                else:
+                    # TRƯỜNG HỢP 2: MÓN ĐÃ TỒN TẠI TRONG TỪ ĐIỂN
+                    # Gắn luôn ID của món cũ vào JSON trả về
+                    food_info["food_id"] = existing_food.food_id
             else:
                 print("LỖI: AI không trả về trường 'ten_mon' trong JSON.")
                 
@@ -130,35 +139,3 @@ async def scan_food_image(
     except Exception as e:
         print(f"Lỗi Scan AI: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-@router.post("/save-log")
-async def save_food_log(
-    data: dict,
-    user_id: int = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """API Lưu kết quả quét AI vào bảng Meal (Lịch sử món ăn)"""
-    try:
-        new_meal = Meal(
-            user_id=user_id,
-            ten_mon_an=data.get('ten_mon'),
-            meal_calories=data.get('calories', 0),
-            meal_protein_g=data.get('protein_g', 0.0),
-            meal_carb_g=data.get('carb_g', 0.0),
-            meal_fat_g=data.get('fat_g', 0.0),
-            image_url=data.get('image_url'),
-            bua_an=data.get('bua_an', 'Khác') 
-        )
-
-        db.add(new_meal)
-        db.commit()
-        db.refresh(new_meal)
-
-        return {
-            "status": "success", 
-            "message": "Đã lưu món ăn thành công",
-            "meal_id": new_meal.meal_id
-        }
-        
-    except Exception as e:
-        db.rollback() 
-        raise HTTPException(status_code=500, detail=f"Lỗi khi lưu vào DB: {str(e)}")

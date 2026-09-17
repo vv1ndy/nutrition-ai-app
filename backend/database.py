@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 import urllib
 
-# 1. Điền chính xác các thông số bạn vừa kiểm tra vào đây:
+# 1. Điền các thông số 
 server = 'localhost' # Hoặc 'TEN_MAY\\SQLEXPRESS'
 database = 'AI_Nutri' # Điền tên database của bạn
 username = 'sa'
@@ -26,29 +26,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 def get_db():
-    db = SessionLocal()
+    db = SessionLocal()#Mở kết nối Database mới
     try:
-        yield db
+        yield db#Bàn giao kết nối (biến db) cho API sử dụng
     finally:
-        db.close()
-''' TEST KẾT NỐI ĐẾN SQL SERVER '''
-'''if __name__ == "__main__":
-    from sqlalchemy import text
-    
-    try:
-        # Thử mở một kết nối đến database
-        with engine.connect() as connection:
-            print("✅ KẾT NỐI ĐẾN SQL SERVER THÀNH CÔNG!")
-            
-            # Thử truy vấn lấy 1 món ăn từ bảng food (bảng bạn vừa nạp dữ liệu lúc nãy)
-            query = text("SELECT TOP 1 ten_mon FROM food")
-            result = connection.execute(query)
-            
-            for row in result:
-                print(f"🍲 Truy vấn thử thành công. Món ăn đầu tiên trong DB là: {row[0]}")
-                
-    except Exception as e:
-        print("❌ KẾT NỐI THẤT BẠI! Vui lòng kiểm tra lại thông số (server, username, password).")
-        print("Chi tiết lỗi:")
-        print(e)
-'''
+        db.close()#Đảm bảo ĐÓNG kết nối dù API chạy thành công hay bị lỗi

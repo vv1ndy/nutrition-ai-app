@@ -30,11 +30,11 @@ export default function ProfileEditScreen({ navigation }) {
   }, []);
 
   const fetchMyProfile = async () => {
+    setLoading(true);
     try {
       const res = await apiClient.get('/users/me');
       
-      // Khắc phục lỗi "lệch tầng" dữ liệu: Lấy đúng data bên trong
-      const data = res.data.data || res.data; 
+      const data =  res.data; 
       console.log("👉 Dữ liệu lấy về từ Backend:", data);
 
       if (data.gioi_tinh) 
@@ -56,11 +56,11 @@ export default function ProfileEditScreen({ navigation }) {
         let rawMucDo = data.muc_do_van_dong.trim();
         let finalMucDo = 'Vừa'; // Đặt mức Vừa làm cứu cánh an toàn
         
-        // Nếu dữ liệu đã chuẩn (sau khi bạn lưu lại thành công), lấy dùng luôn
+        // Nếu dữ liệu đã chuẩn (sau khi lưu lại thành công), lấy dùng luôn
         if (validLevels.includes(rawMucDo)) {
             finalMucDo = rawMucDo;
         } else {
-            // Nếu bị lỗi font, chúng ta quét các chữ cái không dấu
+            // Nếu bị lỗi font,  quét các chữ cái không dấu
             let lower = rawMucDo.toLowerCase();
             if (lower.includes('r')) finalMucDo = 'Rất nhiều';             // Bắt chữ 'r' trong Rất nhiều
             else if (lower.includes('nhi')) finalMucDo = 'Nhiều';          // Bắt chữ 'nhi' trong Nhiều
@@ -68,8 +68,6 @@ export default function ProfileEditScreen({ navigation }) {
             else if (lower.includes('v')) finalMucDo = 'Vừa';              // Bắt chữ 'v' trong Vừa
             else if (lower.includes('t')) finalMucDo = 'Ít vận động';      // Bắt chữ 't' trong Ít vận động
         }
-        
-        console.log("✅ Đã xử lý Mức độ vận động thành:", finalMucDo);
         setMucDoVanDong(finalMucDo);
       }
       if (data.benh_nen) setBenhNen(data.benh_nen.normalize ? data.benh_nen.normalize('NFC') : data.benh_nen);
@@ -118,11 +116,11 @@ export default function ProfileEditScreen({ navigation }) {
     }
   };
 
-  if (loading) {
+  if (loading || saving) {
     return (
       <View style={styles.loaderContainer}>
         <ActivityIndicator size="large" color="#7CB342" />
-        <Text style={{ marginTop: 12, color: '#689F38', fontWeight: '600' }}>Đang tải hồ sơ...</Text>
+        <Text style={{ marginTop: 12, color: '#689F38', fontWeight: '600' }}>Đang tải hồ sơ... 🥝</Text>
       </View>
     );
   }
@@ -207,6 +205,7 @@ export default function ProfileEditScreen({ navigation }) {
         {/* Lựa chọn Mục tiêu */}
         <Text style={styles.label}>Mục tiêu cân nặng</Text>
         <View style={[styles.pickerBox, { marginBottom: mucTieuCanNang !== 'Giữ cân' ? 12 : 20 }]}>
+            {/*Hiển thị giá trị hiện tại từ state mucTieuCanNang, và khi người dùng thay đổi thì setMucTieuCanNang được gọi*/}
           <Picker selectedValue={mucTieuCanNang} onValueChange={(itemValue) => setMucTieuCanNang(itemValue)} style={styles.picker}>
             <Picker.Item label="Giữ cân" value="Giữ cân" />
             <Picker.Item label="Giảm cân" value="Giảm cân" />
@@ -226,6 +225,7 @@ export default function ProfileEditScreen({ navigation }) {
         {/* Lựa chọn Vận động */}
         <Text style={[styles.label,{marginTop: 16}]}>Mức độ vận động của bạn</Text>
         <View style={[styles.pickerBox, { marginBottom: 16 }]}>
+            {/*Hiển thị danh sách các mức độ vận động từ mảng activityLevels, và khi người dùng chọn thì setMucDoVanDong được gọi*/}
           <Picker
             selectedValue={mucDoVanDong}
             onValueChange={(itemValue) => setMucDoVanDong(itemValue)}

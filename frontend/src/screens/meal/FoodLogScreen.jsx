@@ -19,7 +19,7 @@ export default function FoodLogScreen() {
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     return d.toISOString().split('T')[0];
   };
-
+//hiển thị ngày ra giao diện
   const getDisplayDate = (date) => {
     const today = new Date();
     const yesterday = new Date();
@@ -34,18 +34,21 @@ export default function FoodLogScreen() {
     try {
       setLoading(true);
       const dateStr = formatDateForAPI(selectedDate);
-      const response = await apiClient.get('/meals/by-date', { params: { date: dateStr } });
+      const response = await apiClient.get('/meals/by-date', { params: { date: dateStr } });//Lấy dữ liệu API trả về
       
       const logs = response.data.meals || [];
       const tdee = response.data.daily_goal || 2000; 
+      const summaryData = response.data.summary || { total_calories: 0, total_protein: 0, total_carb: 0, total_fat: 0 };
       
       setFoodLogs(logs);
-      calculateSummary(logs);
+      setSummary(summaryData);
       setDailyGoal(Number(tdee));
 
     } catch (error) {
+      //Nếu có lỗi đưa các chỉ số về 0 để app không bị crash
       console.log("LỖI SERVER TRẢ VỀ:", error.response?.data || error.message);
       setDailyGoal(2000); 
+      setSummary({ total_calories: 0, total_protein: 0, total_carb: 0, total_fat: 0 });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -55,31 +58,21 @@ export default function FoodLogScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchFoodLogs();
-    }, [selectedDate])
+    }, 
+    [selectedDate])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchFoodLogs();
   };
-
+//Thay đổi ngày để hiển thị danh sách món ăn trong các ngày khác
   const changeDate = (days) => {
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() + days);
     setSelectedDate(newDate);
   };
-
-  const calculateSummary = (logs) => {
-    let calories = 0, protein = 0, carb = 0, fat = 0;
-    logs.forEach(item => {
-      calories += parseFloat(item.meal_calories) || 0;
-      protein += parseFloat(item.meal_protein_g) || 0;
-      carb += parseFloat(item.meal_carb_g) || 0;
-      fat += parseFloat(item.meal_fat_g) || 0;
-    });
-    setSummary({ total_calories: calories, total_protein: protein, total_carb: carb, total_fat: fat });
-  };
-
+//Gom nhóm lại các món ăn lấy về từ backend rồi hiển thị theo các bữa ăn
   const getGroupedMeals = () => {
     const groups = { 'Sáng': [], 'Trưa': [], 'Tối': [], 'Khác': [] };
     
@@ -103,16 +96,19 @@ export default function FoodLogScreen() {
   const progressPercentage = Math.min((currentCalories / dailyGoal) * 100, 100);
   const progressBarColor = currentCalories > dailyGoal ? '#EF4444' : '#7CB342';
   
-  // Tính toán lời khuyên của Mascot
   const remainingCalories = dailyGoal - currentCalories;
   let mascotMessage = "";
   if (remainingCalories > 0) {
     mascotMessage = `Cố lên! Bạn còn ${remainingCalories.toFixed(0)} kcal cho hôm nay. Nhớ chọn món thật Healthy nhé! 🥗`;
-  } else {
-    mascotMessage = `Úi chà! Hôm nay bạn đã nạp đủ calo rồi. Nếu ăn thêm nhớ vận động để tiêu hao nhé! 🏃‍♂️`;
+  } 
+  else if(remainingCalories < 100 && remainingCalories >= 0) 
+  {
+    mascotMessage = `Úi chà! Hôm nay bạn sắp hoàn thành mục tiêu calo của ngày hôm nay rồi. Chú ý chọn những món ít calo, lành mạnh nhé! 🥝`;
+  }
+  else {
+    mascotMessage = `Úi chà! Hôm nay bạn đã nạp thừa ${Math.abs(remainingCalories).toFixed(0)} calo rồi. Nếu ăn thêm nhớ vận động để tiêu hao nhé! 🏃‍♂️`;
   }
 
-  // TÍNH TOÁN PHẦN TRĂM MACRO CHO BIỂU ĐỒ TRÒN THỰC DỤNG HƠN
   const totalMacros = summary.total_protein + summary.total_carb + summary.total_fat;
   const hasMacroData = totalMacros > 0;
   
@@ -124,9 +120,9 @@ export default function FoodLogScreen() {
   }
 
   const chartData = [
-    { name: `Protein (${pPercent}%)`, population: Math.round(summary.total_protein), color: "#EF4444", legendFontColor: "#4E342E", legendFontSize: 13 },
-    { name: `Carb (${cPercent}%)`, population: Math.round(summary.total_carb), color: "#3B82F6", legendFontColor: "#4E342E", legendFontSize: 13 },
-    { name: `Fat (${fPercent}%)`, population: Math.round(summary.total_fat), color: "#F59E0B", legendFontColor: "#4E342E", legendFontSize: 13 }
+    { name: `g Protein (${pPercent}%)`, population: Math.round(summary.total_protein), color: "#EF4444", legendFontColor: "#4E342E", legendFontSize: 13 },
+    { name: `g Carb (${cPercent}%)`, population: Math.round(summary.total_carb), color: "#3B82F6", legendFontColor: "#4E342E", legendFontSize: 13 },
+    { name: `g Fat (${fPercent}%)`, population: Math.round(summary.total_fat), color: "#F59E0B", legendFontColor: "#4E342E", legendFontSize: 13 }
   ];
 
   if (loading && !refreshing && foodLogs.length === 0) {
@@ -137,9 +133,10 @@ export default function FoodLogScreen() {
     );
   }
 
-  return (
-    <View style={styles.container}>
-      {/* THANH ĐIỀU HƯỚNG NGÀY THÁNG */}
+  // --- HÀM GỘP GIAO DIỆN NẰM Ở TRÊN CÙNG ---
+  const renderHeader = () => (
+    <View style={{ paddingBottom: 10 }}>
+      {/* 2 THANH ĐIỀU HƯỚNG NGÀY VÀ HIỂN THỊ NGÀY Ở TRÊN CÙNG */}
       <View style={styles.dateNavigator}>
         <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateBtn}>
           <Text style={styles.dateBtnText}>◀</Text>
@@ -168,6 +165,7 @@ export default function FoodLogScreen() {
         </View>
       </View>
 
+      {/* TỔNG KẾT CALO & MACRO */}
       <View style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Tổng Kết {getDisplayDate(selectedDate)}</Text>
         <Text style={styles.caloriesText}>🔥 {summary.total_calories.toFixed(0)} <Text style={{fontSize: 16, fontWeight: '600'}}>Kcal</Text></Text>
@@ -207,38 +205,73 @@ export default function FoodLogScreen() {
           </View>
         )}
       </View>
+    </View>
+  );
 
+  return (
+    //Thanh hiển thị danh sách món ăn theo ngày
+    <View style={styles.container}>
       <SectionList
+        ListHeaderComponent={renderHeader}
         sections={getGroupedMeals()}
-        keyExtractor={(item, index) => item.meal_id?.toString() || index.toString()}
+        keyExtractor={(item, index) => item.meal_id?.toString() || index.toString()}//Gán key cho từng món ăn
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#7CB342']} />}
         renderSectionHeader={({ section: { title } }) => (
-          <Text style={styles.sectionTitle}>{title}</Text>
+          <Text style={styles.sectionTitle}>{title}</Text>//Hiển thị tên các bữa ăn( Sáng, Trưa, Tối, Phụ)
         )}
-        renderItem={({ item }) => (
-          <View style={styles.foodItemCard}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.foodName}>{item.ten_mon_an}</Text>
-              {item.loi_khuyen ? (
-                <Text style={{ fontSize: 12, color: '#689F38', fontStyle: 'italic', marginTop: 4, marginRight: 10 }}>
+          renderItem={({ item }) => (
+          <View style={[styles.foodItemCard, { flexDirection: 'column' }]}>
+            
+            {/* --- KHỐI 1: Tên món ăn (trái) và Calo & Macro (phải) --- */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+              <Text style={[styles.foodName, { flex: 1, marginRight: 10, lineHeight: 22 }]}>
+                {item.ten_mon_an}
+              </Text>
+              
+              <View style={{ alignItems: 'flex-end', flexShrink: 0 }}>
+                <Text style={styles.foodCalories}>{parseFloat(item.meal_calories).toFixed(0)} kcal</Text>
+                <Text style={styles.foodMacro}>
+                  P: {parseFloat(item.meal_protein_g).toFixed(1)}g | 
+                  C: {parseFloat(item.meal_carb_g).toFixed(1)}g | 
+                  F: {parseFloat(item.meal_fat_g).toFixed(1)}g
+                </Text>
+              </View>
+            </View>
+
+            {/* --- KHỐI 2: Hình ảnh (Hiển thị to, full chiều ngang) --- */}
+            <View style={{width: '100%', marginBottom: item.loi_khuyen ? 12 : 0 }}>
+              <Image 
+                source={
+                  item.image_url
+                    ? { uri: item.image_url } 
+                    : require('../../../assets/icon.png') 
+                } 
+                style={{ 
+                  width: '100%', 
+                  height: 160, //  có thể tăng lên 180 hoặc 200 nếu muốn ảnh to hơn nữa
+                  borderRadius: 8, 
+                  backgroundColor: '#f0f0f0',
+                  resizeMode: 'cover' 
+                }} 
+              />
+            </View>
+
+            {/* --- KHỐI 3: Lời khuyên (Nằm dưới cùng, tràn đủ chiều ngang) --- */}
+            {item.loi_khuyen ? (
+              <View>
+                <Text style={{ fontSize: 13, color: '#689F38', fontStyle: 'italic', lineHeight: 20 }}>
                   💡 {item.loi_khuyen}
                 </Text>
-              ) : null}
-            </View>
-            <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
-              <Text style={styles.foodCalories}>{parseFloat(item.meal_calories).toFixed(0)} kcal</Text>
-              <Text style={styles.foodMacro}>
-                P: {parseFloat(item.meal_protein_g).toFixed(1)}g | 
-                C: {parseFloat(item.meal_carb_g).toFixed(1)}g | 
-                F: {parseFloat(item.meal_fat_g).toFixed(1)}g
-              </Text>
-            </View>
+              </View>
+            ) : null}
+            
           </View>
         )}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>🍽️ Nhấn vào "Bữa Ăn" để ghi lại món ăn nhé!</Text>
+            <Text style={styles.emptyText}>🍽️ Chưa ghi nhận bữa ăn nào vào ngày hôm nay</Text>
           </View>
         }
       />
@@ -247,7 +280,7 @@ export default function FoodLogScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F1F8E9', padding: 16, paddingTop: 40 }, // Nền xanh Kiwi
+  container: { flex: 1, backgroundColor: '#F1F8E9', paddingHorizontal: 16, paddingTop: 40 }, 
   loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F1F8E9' },
   
   dateNavigator: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
@@ -256,14 +289,12 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 22, fontWeight: '900', color: '#4E342E' },
   headerSubtitle: { fontSize: 15, color: '#689F38', fontWeight: '700' },
   
-  // Mascot Bubble Style
   mascotContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, paddingHorizontal: 4 },
   mascotImg: { width: 60, height: 60, marginRight: 12 },
   bubble: { flex: 1, backgroundColor: '#ffffff', padding: 12, borderRadius: 16, borderColor: '#DCFCE7', borderWidth: 1, shadowColor: '#558B2F', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, elevation: 2, position: 'relative' },
   bubbleText: { fontSize: 13, color: '#4E342E', fontWeight: '600', lineHeight: 18 },
   bubbleArrow: { position: 'absolute', left: -8, top: 20, width: 0, height: 0, borderTopWidth: 8, borderTopColor: 'transparent', borderBottomWidth: 8, borderBottomColor: 'transparent', borderRightWidth: 8, borderRightColor: '#ffffff' },
 
-  // Summary Card Style mới
   summaryCard: { backgroundColor: '#ffffff', borderRadius: 20, padding: 16, marginBottom: 20, shadowColor: '#558B2F', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 4 },
   summaryTitle: { color: '#6B7280', fontSize: 14, fontWeight: '700', marginBottom: 4 },
   caloriesText: { color: '#4E342E', fontSize: 32, fontWeight: '900', marginBottom: 16 },
@@ -280,7 +311,7 @@ const styles = StyleSheet.create({
   foodItemCard: { backgroundColor: '#ffffff', borderRadius: 16, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#558B2F', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, elevation: 2 },
   foodName: { fontSize: 16, fontWeight: '800', color: '#4E342E' },
   foodCalories: { fontSize: 16, fontWeight: '900', color: '#EF4444' },
-  foodMacro: { fontSize: 12, color: '#6B7280', marginTop: 4, fontWeight: '600' },
+  foodMacro: { fontSize: 12, color: '#4E342E', marginTop: 4, fontWeight: '600' },
   
   emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 40, paddingHorizontal: 20 },
   emptyText: { fontSize: 15, fontWeight: '600', color: '#689F38', textAlign: 'center' },

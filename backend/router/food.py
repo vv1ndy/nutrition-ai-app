@@ -31,8 +31,7 @@ YÊU CẦU BẮT BUỘC CHUẨN ĐẦU RA:
 3. Định dạng JSON bắt buộc phải chứa đúng các key sau:
 {{
     "ten_mon": "Tên món ăn chuẩn hóa có dấu",
-    "don_vi": "Ví dụ: quả/bát con/đĩa/cốc",
-    "trong_luong_g": <số float - ví dụ: 50.0 cho 1 quả trứng, 130.0 cho 1 bát cơm>,
+    "khau_phan_chuan": "Định lượng chuẩn cho mỗi khẩu phần bằng gram hoặc ml để người dùng dễ hình dung (Ví dụ: '1 bát vừa (khoảng 300g)', '1 ly (250ml)', '1 đĩa vừa (200g)', '1 cái (150g)')",
     "calories": <số float>,
     "protein_g": <số float>,
     "carb_g": <số float>,
@@ -73,14 +72,14 @@ def add_food_manually(request: ManualFoodEntry, db: Session = Depends(get_db)):
                     "carb_g": float(existing_food.carb_g or 0.0),
                     "fat_g": float(existing_food.fat_g or 0.0),
                     "unit": existing_food.don_vi or "phần",
-                    "weight_in_grams": float(existing_food.kich_thuoc_khau_phan or 100.0),
+                    "kich_thuoc_khau_phan": float(existing_food.kich_thuoc_khau_phan or 1.0),
                     "loi_khuyen": getattr(existing_food, 'loi_khuyen', None) or 'Món này ngon tuyệt! Chúc bạn ngon miệng nhé!'
                 }
             }
 
         # 2. NẾU KHÔNG CÓ TRONG DB -> GỌI AI GEMINI
         raw_text = get_nutrition_from_gemini(request.ten_mon_an)
-        
+        #Làm sạch dữ liệu nhận về từ AI (lọc bỏ markdown, dấu cách, dấu xuống dòng dư thừa)
         clean_text = raw_text.strip()
         if clean_text.startswith("```json"): clean_text = clean_text[7:]
         if clean_text.startswith("```"): clean_text = clean_text[3:]
@@ -93,8 +92,8 @@ def add_food_manually(request: ManualFoodEntry, db: Session = Depends(get_db)):
         new_food = Food(
             ten_mon=ten_mon_ai,
             ten_chuan_hoa=remove_vietnamese_accents(ten_mon_ai.lower()),
-            don_vi=nutri_data.get("don_vi", "phần"),
-            kich_thuoc_khau_phan=nutri_data.get("trong_luong_g", 100.0),
+            don_vi=nutri_data.get("khau_phan_chuan", "phần"),
+            kich_thuoc_khau_phan=1.0,
             calories=nutri_data.get("calories", 0.0),
             protein_g=nutri_data.get("protein_g", 0.0),
             carb_g=nutri_data.get("carb_g", 0.0),
@@ -104,7 +103,7 @@ def add_food_manually(request: ManualFoodEntry, db: Session = Depends(get_db)):
         
         db.add(new_food)
         db.commit()
-        db.refresh(new_food)
+        db.refresh(new_food)#Để lấy food_id mới tạo ra để trả về cho Frontend để lưu vào bảng meal
 
         return {
             "status": "success",
@@ -118,7 +117,7 @@ def add_food_manually(request: ManualFoodEntry, db: Session = Depends(get_db)):
                 "carb_g": float(new_food.carb_g or 0.0),
                 "fat_g": float(new_food.fat_g or 0.0),
                 "unit": new_food.don_vi or "phần",
-                "weight_in_grams": float(new_food.kich_thuoc_khau_phan or 100.0),
+                "kich_thuoc_khau_phan": float(new_food.kich_thuoc_khau_phan or 1.0),
                 "loi_khuyen": new_food.loi_khuyen
             }
         }

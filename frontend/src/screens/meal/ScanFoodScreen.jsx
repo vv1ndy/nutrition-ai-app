@@ -13,6 +13,7 @@ export default function ScanFoodScreen({ navigation }) {
   const { userToken } = useContext(AuthContext);
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingSave, setLoadingSave] = useState(false);
   const [aiResult, setAiResult] = useState(null);
   const [loaiBuaAn, setLoaiBuaAn] = useState('Sáng');
   const [multiplier, setMultiplier] = useState("1.0"); 
@@ -43,44 +44,51 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
       scaleAnim.setValue(1); 
     }
   }, [loading]);
+  //Gom thông tin người dùng: calo còn lại, dị ứng, bệnh nền
   useFocusEffect(
     useCallback(() => {
+      let isMounted = true; //Kiểm tra xem màn hình còn đang hiện hay không trước khi setCaloConLai để tránh leak memory
       const fetchContextForAI = async () => {
         try {
           const d = new Date();
           d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
           const todayStr = d.toISOString().split('T')[0];
-          
-          const caloRes = await apiClient.get('/meals/by-date', { params: { date: todayStr } });
-          const daily = Number(caloRes.data?.daily_goal) || 2000;
-          const consumed = Number(caloRes.data?.consumed_calories) || 0;
-          setCaloConLai(daily - consumed);
-
-          const userRes = await apiClient.get('/users/me');
+          const [caloRes, userRes] = await Promise.all([
+            apiClient.get('/meals/by-date', { params: { date: todayStr } }),
+            apiClient.get('/users/me')
+          ]);
+          if (!isMounted) return; // Nếu màn hình đã unmount, không set state nữa
+          const daily = Number(caloRes.data.daily_goal) || 2000;
+          const consumed = Number(caloRes.data.consumed_calories) || 0;
           if (userRes.data) {
             setDiUng(userRes.data.di_ung || 'Không có');
             setBenhNen(userRes.data.benh_nen || 'Không có');
           }
+          setCaloConLai(daily - consumed);
         } catch (error) {
+          if (isMounted) setCaloConLai(0);
           console.log("Lỗi tải context cho AI:", error.message);
         }
       };
+
       fetchContextForAI();
+
+      return () => { isMounted = false; }; // Cleanup khi màn hình bị unmount
     }, [])
   );
 
   const handlePickOrCapture = async (useCamera = true) => {
     let result;
     if (useCamera) {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      const permission = await ImagePicker.requestCameraPermissionsAsync();//Xin quyền truy cập camera
       if (!permission.granted) return Alert.alert('Lỗi', 'Cần cấp quyền truy cập camera!');
-      result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true });
+      result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true });//Nén ảnh, giảm chất lượng ảnh từ camera chụp còn 80%
     } else {
-      result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true });
+      result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true });//Nén ảnh từ thư viện
     }
 
-    if (!result.canceled) {
-      const originalUri = result.assets[0].uri;
+    if (!result.canceled) {//Nếu bấm hủy camera không bị crash APP
+      const originalUri = result.assets[0].uri;//lấy ảnh đầu
       compressAndSend(originalUri);
     }
   };
@@ -112,9 +120,8 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
       const response = await apiClient.post('/food/scan-ai', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-
-      const resultData = response.data.data || response.data.result || response.data;
-      
+      console.log("Phản hồi từ API:", response.data);
+      const resultData =response.data;
       setAiResult(resultData);
       setMultiplier("1.0");
     } catch (error) {
@@ -127,7 +134,8 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
   const handleSaveLog = async () => {
     if (!aiResult) return;
     try {
-      setLoading(true);
+      setLoadingSave(true);
+      console.log("Kết quả trước khi lưu:", aiResult);
       let currentUserId = null;
       if (userToken) {
         const decoded = jwtDecode(userToken);
@@ -138,35 +146,54 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
         d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
         return d.toISOString().split('T')[0];
       };
+      const rawUnit = aiResult.khau_phan_chuan;
+      let displayUnit = rawUnit || 'phần';
+      const currentMultiplier = parseFloat(multiplier) || 1;
+      if (displayUnit.startsWith('1 ')) {
+        displayUnit = displayUnit.substring(2);
+      }
+
+      // 3. Nhân số gram/ml bên trong ngoặc
+      displayUnit = displayUnit.replace(/(\d+)(\s*(?:g|ml))/i, (match, number, unitText) => {
+        const newWeight = Math.round(parseFloat(number) * currentMultiplier);
+        return `${newWeight}${unitText}`;
+      });
+
+      // 4. Đổi "khoảng" thành "tổng" nếu hệ số khác 1
+      if (currentMultiplier !== 1) {
+        displayUnit = displayUnit.replace(/khoảng|~/i, 'tổng');
+      }
+
+      const tenMonHoanChinh = `${aiResult.ten_mon.trim()} (${currentMultiplier} ${displayUnit})`;
       const payload = {
         user_id: currentUserId,
         ngay_an: getTodayString(),
-        ten_mon_an: aiResult.ten_mon,
+        ten_mon_an: tenMonHoanChinh,
         loai_bua_an: loaiBuaAn,
-        so_luong_khau_phan: parseFloat(multiplier),
-        meal_calories: parseFloat(aiResult.calories) * parseFloat(multiplier),
-        meal_protein_g: parseFloat(aiResult.protein_g) * parseFloat(multiplier),
-        meal_carb_g: parseFloat(aiResult.carb_g) * parseFloat(multiplier),
-        meal_fat_g: parseFloat(aiResult.fat_g) * parseFloat(multiplier),
+        so_luong_khau_phan: currentMultiplier,
+        meal_calories: parseFloat(aiResult.calories) * currentMultiplier,
+        meal_protein_g: parseFloat(aiResult.protein_g) * currentMultiplier,
+        meal_carb_g: parseFloat(aiResult.carb_g) * currentMultiplier,
+        meal_fat_g: parseFloat(aiResult.fat_g) * currentMultiplier,
         image_url: aiResult.image_url,
         loi_khuyen: aiResult.loi_khuyen || null,
-        food_id: null
+        food_id: aiResult.food_id || null
       };
 
       await apiClient.post('/meals', payload);
       Alert.alert('Thành công', 'Đã lưu bữa ăn vào lịch sử dinh dưỡng!', [
-        { text: 'OK', onPress: () => navigation.navigate('FoodLog') }
+        { text: 'Xem nhật ký', onPress: () => navigation.navigate('FoodLog') }
       ]);
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể lưu lịch sử bữa ăn.');
     } finally {
-      setLoading(false);
+      setLoadingSave(false);
     }
   };
 
-  return (
+return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>WIKI SCAN</Text>
+      <Text style={styles.title}>WIKI SCAN 🥝</Text>
       
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.btnCamera} onPress={() => handlePickOrCapture(true)}>
@@ -184,6 +211,7 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
         <Ionicons name="pencil" size={20} color="#166534" style={styles.iconMargin} />
         <Text style={styles.btnManualText}>Nhập Món Thủ Công</Text>
       </TouchableOpacity>
+      
       {!image && !loading && !aiResult && (
         <View style={styles.emptyStateContainer}>
           <Image source={require('../../../assets/mascot.png')} style={styles.emptyStateMascot} resizeMode="contain" />
@@ -193,6 +221,7 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
           </Text>
         </View>
       )}
+      
       {image && <Image source={{ uri: image }} style={styles.preview} />}
 
      {loading && (
@@ -212,7 +241,11 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
           <Text style={styles.infoText}>🔥 Mức Calo: <Text style={{fontWeight: '900', color: '#EF4444'}}>{aiResult.calories} kcal</Text></Text>
           <Text style={styles.infoText}>🥩 P: {aiResult.protein_g}g | 🍚 C: {aiResult.carb_g}g | 🥑 F: {aiResult.fat_g}g</Text>
           
-          {/* PHẦN LỜI KHUYÊN CỦA MASCOT */}
+          <View style={styles.portionBadge}>
+            <Text style={styles.portionBadgeText}>⚖️ Mức chuẩn WIKI tính: {aiResult.khau_phan_chuan || "1 phần tiêu chuẩn"}</Text>
+          </View>
+          
+          {/* PHẦN LỜI KHUYÊN CỦA MASCOT  */}
           {aiResult.loi_khuyen ? (
             <View style={styles.mascotContainer}>
               <Image source={require('../../../assets/mascot.png')} style={styles.mascotImg} resizeMode="contain" />
@@ -222,21 +255,41 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
               </View>
             </View>
           ) : null}
-
+          
           <View style={styles.adjustContainer}>
-            <Text style={styles.label}>Hệ số khẩu phần (ví dụ 0.5 bát, 2 đĩa):</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
+            <Text style={styles.label}>Thực tế bạn ăn bao nhiêu so với mức chuẩn?</Text>
+            
+            {/* CÁC MỐC KHẨU PHẦN CHỌN NHANH */}
+            <View style={styles.presetRow}>
+              {['0.5', '1.0', '1.5', '2.0'].map((val) => (
+                <TouchableOpacity 
+                  key={val} 
+                  style={[styles.presetBtn, 
+                    multiplier === val && styles.presetBtnActive]} 
+                  onPress={() => setMultiplier(val)}
+                >
+                  <Text style={[styles.presetBtnText, 
+                    multiplier === val && styles.presetBtnTextActive]}>
+                    {/*Hiển thị dấu x & số khẩu phần trong các nút*/}
+                    x{val}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput 
+              keyboardType="numeric" 
+              onChangeText={setMultiplier} 
+              placeholder="Hoặc tự nhập số (VD: 0.8)" 
+              style={styles.input} 
               value={multiplier}
-              onChangeText={setMultiplier}
             />
           </View>
           
           <View style={styles.mealTypeContainer}>
             <Text style={styles.label}>Chọn bữa ăn:</Text>
             <View style={styles.mealButtonsRow}>
-              {['Sáng', 'Trưa', 'Tối', 'Khác'].map((meal) => (
+              {['Sáng', 'Trưa', 'Tối', 'Phụ'].map((meal) => (
                 <TouchableOpacity 
                   key={meal}
                   style={[
@@ -249,6 +302,7 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
                     styles.mealButtonText,
                     loaiBuaAn === meal && styles.mealButtonTextActive
                   ]}>
+                    {/*Hiển thị tên các bữa ăn trong các nút*/}
                     {meal}
                   </Text>
                 </TouchableOpacity>
@@ -256,15 +310,15 @@ const scaleAnim = useRef(new Animated.Value(1)).current;
             </View>
           </View>
 
-          <TouchableOpacity style={styles.saveButton} onPress={handleSaveLog}>
-            <Text style={styles.saveButtonText}>💾 Xác Nhận & Lưu Lịch Sử</Text>
+          <TouchableOpacity style={styles.saveButton} onPress={handleSaveLog} disabled={loadingSave}>
+            {/*Hiển thị ActivityIndicator khi đang lưu, ngược lại hiển thị text "Xác Nhận & Lưu Lịch Sử" */}
+            {loadingSave ?  <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>💾 Xác Nhận & Lưu Lịch Sử</Text>}
           </TouchableOpacity>
         </View>
       )}
     </ScrollView>
   );
 }
-
 const styles = StyleSheet.create({
   container: { padding: 20, paddingTop: 40, backgroundColor: '#F1F8E9', alignItems: 'center', flexGrow: 1 },
   title: { fontSize: 24, fontWeight: '900', marginBottom: 20, color: '#4E342E' },
@@ -291,7 +345,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic', 
     fontWeight: '500' 
   },
- // --- BẮT ĐẦU PHẦN STYLE MỚI CHO CÁC NÚT ---
+ // --- PHẦN STYLE CHO CÁC NÚT ---
   buttonRow: { 
     flexDirection: 'row', 
     gap: 16, 
@@ -354,7 +408,7 @@ const styles = StyleSheet.create({
     marginBottom: 24, 
     alignItems: 'center', 
     width: '100%', 
-    borderStyle: 'dashed' // Tạo viền nét đứt siêu dễ thương
+    borderStyle: 'dashed' 
   },
   btnManualText: { 
     color: '#166534', 
@@ -410,11 +464,56 @@ const styles = StyleSheet.create({
     color: '#689F38', 
     marginBottom: 8 
   },
-  emptyStateSub: { 
+ emptyStateSub: { 
     fontSize: 14, 
     color: '#6B7280', 
     textAlign: 'center', 
     lineHeight: 22,
     fontWeight: '500'
+  },
+
+  // Style cho dòng thông báo định lượng chuẩn
+  portionBadge: {
+    backgroundColor: '#FFF3E0',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignSelf: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#FFE0B2'
+  },
+  portionBadgeText: {
+    color: '#E65100',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  
+  // Style cho hàng nút bấm mốc định lượng
+  presetRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12
+  },
+  presetBtn: {
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 10,
+    flex: 1,
+    marginHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB'
+  },
+  presetBtnActive: {
+    backgroundColor: '#7CB342',
+    borderColor: '#558B2F'
+  },
+  presetBtnText: {
+    fontWeight: '700',
+    color: '#6B7280'
+  },
+  presetBtnTextActive: {
+    color: '#FFFFFF'
   }
-});
+}); 

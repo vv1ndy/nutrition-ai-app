@@ -14,6 +14,7 @@ export default function HomeScreen({ navigation }) {
 
   const [chartData, setChartData] = useState({ labels: [], data: [] });
   const [dailyGoal, setDailyGoal] = useState(2000);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [waterChartData, setWaterChartData] = useState({ labels: [], data: [] });
   const [todayWater, setTodayWater] = useState(0);
@@ -26,11 +27,11 @@ export default function HomeScreen({ navigation }) {
   const [customWaterAmount, setCustomWaterAmount] = useState('');
   const [selectedAmount, setSelectedAmount] = useState(250); // Mặc định chọn sẵn 250ml
 
-  const { logout, userToken } = useContext(AuthContext);
+  const { logout, userToken } = useContext(AuthContext);//Xử lý đăng xuất
   // Khai báo biến lưu trạng thái phóng to/thu nhỏ
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  // Hiệu ứng đập nhịp tim khi màn hình đang tải dữ liệu
+  // Hiệu ứng mascot đập khi màn hình đang tải dữ liệu
   useEffect(() => {
     if (loading) {
       Animated.loop(
@@ -51,6 +52,7 @@ export default function HomeScreen({ navigation }) {
       scaleAnim.setValue(1); 
     }
   }, [loading]);
+
   let currentUserId = null;
   if (userToken) {
     const decoded = jwtDecode(userToken);
@@ -66,7 +68,7 @@ export default function HomeScreen({ navigation }) {
       };
       const todayStr = getTodayString();
       
-      // Chạy 3 API cùng một lúc
+      // Gom 3 API call vào Promise.all để thực hiện song song, tăng tốc độ tải dữ liệu
       const [caloRes, waterTodayRes, waterWeeklyRes] = await Promise.all([
         apiClient.get('/meals/weekly-stats', { params: { date_str: todayStr } }),
         apiClient.get('/water/today').catch(e => ({ data: null, error: e })), // Bắt lỗi riêng từng API
@@ -75,8 +77,8 @@ export default function HomeScreen({ navigation }) {
 
       if (caloRes && caloRes.data) {
         setChartData({
-          labels: caloRes.data.labels,
-          data: caloRes.data.data
+          labels: caloRes.data.labels,//Lưu ngày
+          data: caloRes.data.data//Lưu calo
         });
         setDailyGoal(caloRes.data.daily_goal || 2000);
       }
@@ -106,16 +108,16 @@ export default function HomeScreen({ navigation }) {
 
   const handleLogWater = async (amount) => {
     if (!amount || isNaN(amount)) return;
-    
+    // Xác định lượng nước cuối cùng dựa trên hành động (add/subtract)
     const finalAmount = waterAction === 'subtract' ? -Math.abs(amount) : Math.abs(amount);
-    
+    //Đảm bảo lượng nước không âm
     if (waterAction === 'subtract' && todayWater + finalAmount < 0) {
       Alert.alert("Lỗi", "Lượng nước không thể bé hơn 0 ml!");
       return;
     }
-
-    setWaterModalVisible(false);
-    setCustomWaterAmount('');
+    setIsSubmitting(true);//Khóa nút xác nhận để tránh lưu nhầm nhiều lần
+    setWaterModalVisible(false);//Đóng khung nhập liệu
+    setCustomWaterAmount('');//Xóa ô nhập lượng nước thủ công
 
     try {
       await apiClient.post('/water/log', { luong_nuoc_ml: finalAmount });
@@ -123,9 +125,11 @@ export default function HomeScreen({ navigation }) {
     } catch (error) {
       console.log("Lỗi lưu nước:", error);
       Alert.alert("Lỗi", "Không thể lưu lượng nước, vui lòng kiểm tra kết nối.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
-
+//Khởi tạo các giá trị khi mở Modal, bao gồm reset ô nhập tay và khôi phục giá trị mặc định 250 ml
   const openWaterModal = (action) => {
     setWaterAction(action);
     setSelectedAmount(250); // Khôi phục mặc định khi mở Modal
@@ -145,26 +149,26 @@ export default function HomeScreen({ navigation }) {
       </View>
     );
   }
-
+// Tính toán dữ liệu cho biểu đồ Calo 
   const lineChartData = {
     labels: chartData.labels.length > 0 ? chartData.labels : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     datasets: [
       {
         data: chartData.data.length > 0 ? chartData.data : [0, 0, 0, 0, 0, 0, 0],
         color: (opacity = 1) => `rgba(124, 179, 66, 1)`,
-        strokeWidth: 4 
+        strokeWidth: 4 //Độ dày của đường biểu đồ 4 px
       },
       {
         data: chartData.data.length > 0 ? chartData.data.map(() => dailyGoal) : Array(7).fill(dailyGoal),
         color: (opacity = 1) => `rgba(93, 64, 55, 1)`,
         withDots: false,
         strokeWidth: 2,
-        strokeDashArray: [4, 4]
+        strokeDashArray: [4, 4]//Hiển thị đường nét đứt
       }
     ],
     legend: ["Calo thực tế", "Mục tiêu (TDEE)"]
   };
-
+// Tính toán dữ liệu cho biểu đồ Nước
   const waterLineData = {
     labels: waterChartData.labels.length > 0 ? waterChartData.labels : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     datasets: [
@@ -192,6 +196,7 @@ export default function HomeScreen({ navigation }) {
   ];
 
   return (
+    //---Hiển thị màn hình chính với ScrollView để cuộn nội dung, tránh bị che bởi các phần tử khác---
     <View style={styles.mainContainer}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
@@ -235,7 +240,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.waterValue}>{todayWater} / {targetWater} ml</Text>
             </View>
           </View>
-
+            {/* 2 Nút thêm nước và trừ nước */}
           <View style={styles.waterControlRow}>
             <TouchableOpacity style={styles.waterAddBtn} onPress={() => openWaterModal('add')}>
               <Ionicons name="add-circle" size={20} color="#fff" style={{marginRight: 6}} />
@@ -246,7 +251,7 @@ export default function HomeScreen({ navigation }) {
               <Ionicons name="remove-circle-outline" size={24} color="#EF4444" />
             </TouchableOpacity>
           </View>
-
+          {/* Biểu đồ Nước */}
           <LineChart
             data={waterLineData}
             width={screenWidth - 60}
@@ -266,7 +271,7 @@ export default function HomeScreen({ navigation }) {
             bezier
             style={styles.chartStyle}
           />
-
+          {/* Lịch sử uống nước trong ngày(slice(0,5)->liệt kê tối đa 5 mục) */} 
           <View style={styles.waterHistoryContainer}>
             <Text style={styles.waterHistoryTitle}>🕒 Lịch sử hôm nay</Text>
             {waterLogs.length === 0 ? (
@@ -274,6 +279,8 @@ export default function HomeScreen({ navigation }) {
             ) : (
               waterLogs.slice(0,5).map((log, index) => (
                 <View key={log.id || index} style={styles.waterLogItem}>
+                  {/* Hiển thị thời gian và lượng nước, màu đỏ nếu là trừ nước(Mặc định đã là âm nên không cần thêm dấu -), 
+                  màu xanh nếu là thêm nước(Thêm dấu + trước lượng nước)*/}
                   <View style={styles.waterLogLeft}>
                     <Ionicons name="water" size={20} color="#0EA5E9" style={{ marginRight: 8 }} />
                     <Text style={styles.waterLogTime}>{log.time}</Text>
@@ -303,12 +310,12 @@ export default function HomeScreen({ navigation }) {
         onRequestClose={() => setWaterModalVisible(false)}
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setWaterModalVisible(false)}>
-          {/* Đã sửa thẻ TouchableOpacity lồng nhau thành View chuẩn */}
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             
             <View style={styles.modalHeader}>
+              {/* Hiển thị tiêu đề dựa trên hành động (add/subtract) */}
               <Text style={styles.modalTitle}>
-                {waterAction === 'add' ? '💧 Bạn vừa uống bao nhiêu?' : '⚠️ Bạn muốn trừ bao nhiêu?'}
+                {waterAction === 'add' ? '💧 Bạn vừa uống bao nhiêu?' : '⚠️ Bạn muốn hoàn tác bao nhiêu?'}
               </Text>
               <TouchableOpacity onPress={() => setWaterModalVisible(false)}>
                 <Ionicons name="close" size={28} color="#4B5563" />
@@ -316,9 +323,9 @@ export default function HomeScreen({ navigation }) {
             </View>
 
             <View style={styles.quickAddGrid}>
+              {/* Hiển thị các nút chọn nhanh */}
               {waterOptions.map((opt, idx) => {
-                // LOGIC MỚI: Check thẻ đang chọn dựa trên selectedAmount
-                const isHighlight = opt.ml === selectedAmount; 
+                const isHighlight = opt.ml === selectedAmount; {/* Hàm làm nổi bật nút được chọn */}
                 return (
                   <TouchableOpacity 
                     key={idx} 
@@ -335,7 +342,7 @@ export default function HomeScreen({ navigation }) {
                 );
               })}
             </View>
-
+            {/* Hiển thị ô nhập tay nếu người dùng muốn nhập lượng nước tùy ý */}
             <Text style={styles.customInputLabel}>Hoặc nhập số lượng tùy ý (ml):</Text>
             <View style={styles.customInputRow}>
               <TextInput
@@ -345,14 +352,14 @@ export default function HomeScreen({ navigation }) {
                 placeholderTextColor="#9CA3AF"
                 value={customWaterAmount}
                 onChangeText={(text) => {
-                  setCustomWaterAmount(text);
+                  setCustomWaterAmount(text);//Hiển thị số lượng nước người dùng nhập
                   setSelectedAmount(null); // Khi người dùng tự nhập, tắt sáng tất cả các nút
                 }}
               />
               <TouchableOpacity 
                 style={[styles.customSubmitBtn, waterAction === 'subtract' && {backgroundColor: '#EF4444'}]}
                 onPress={() => {
-                  // LOGIC XÁC NHẬN: Ưu tiên ô nhập tay, nếu không nhập thì dùng nút đã chọn
+                  // LOGIC XÁC NHẬN: Ưu tiên ô nhập tay, nếu ô nhập trống thì mới lấy số lượng ở nút chọn nhanh
                   const amountToSubmit = customWaterAmount ? parseFloat(customWaterAmount) : selectedAmount;
                   if (amountToSubmit) {
                     handleLogWater(amountToSubmit);
@@ -360,8 +367,9 @@ export default function HomeScreen({ navigation }) {
                     Alert.alert("Nhắc nhở", "Vui lòng chọn hoặc nhập lượng nước!");
                   }
                 }}
+                disabled={isSubmitting}
               >
-                <Text style={styles.customSubmitText}>Xác nhận</Text>
+                {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.customSubmitText}>Xác nhận</Text>}
               </TouchableOpacity>
             </View>
 

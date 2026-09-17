@@ -10,12 +10,12 @@ export default function AiSuggestScreen() {
   const [suggestions, setSuggestions] = useState([]);
   const [buaAn, setBuaAn] = useState('Sáng'); 
   const [caloConLai, setCaloConLai] = useState(0);
-  const [isCalculating, setIsCalculating] = useState(true);
-  const [savingIndex, setSavingIndex] = useState(null);
+  const [isCalculating, setIsCalculating] = useState(true);//Tránh hiện thông báo "Bạn còn 0 kcal" khi màn hình mới được load
+  const [savingIndex, setSavingIndex] = useState(null);//Đánh dấu index của món ăn đang được lưu vào server để hiển thị loading indicator
   const { userToken } = useContext(AuthContext);
-  const mealTypes = ['Sáng', 'Trưa', 'Tối', 'Ăn vặt'];
+  const mealTypes = ['Sáng', 'Trưa', 'Tối', 'Phụ'];
   const scaleAnim = useRef(new Animated.Value(1)).current;
-
+//Tạo hiệu ứng thở cho Mascot khi đang loading
   useEffect(() => {
     if (loading) {
       Animated.loop(
@@ -36,10 +36,11 @@ export default function AiSuggestScreen() {
       scaleAnim.setValue(1); 
     }
   }, [loading]);
+
   useFocusEffect(
     React.useCallback(() => {
-      let isMounted = true;
-
+      let isMounted = true;//Kiểm tra xem màn hình còn đang hiện hay không trước khi setCaloConLai để tránh leak memory
+      //Lấy dữ liệu calo còn lại trong ngày hiện tại mỗi khi người dùng quay lại màn hình này
       const fetchTodayCalories = async () => {
         try {
           setIsCalculating(true);
@@ -65,7 +66,7 @@ export default function AiSuggestScreen() {
       fetchTodayCalories();
 
       return () => {
-        isMounted = false;
+        isMounted = false;// Cleanup khi màn hình bị unmount
       };
     }, [])
   );
@@ -122,7 +123,7 @@ export default function AiSuggestScreen() {
       const response = await apiClient.post('/meals', payload);
 
       if (response.status === 200 || response.status === 201) {
-        Alert.alert('Thành công', `Đã thêm "${item.ten_mon_an}" vào nhật ký ăn uống!`);
+        Alert.alert('Thành công', `Đã thêm "${item.ten_mon_an}" vào nhật ký ăn uống!`,[{ text: 'OK', onPress: () => {} }]);
         setCaloConLai(prev => prev - item.meal_calories);
       }
     } catch (error) {
@@ -144,7 +145,7 @@ export default function AiSuggestScreen() {
       
       <View style={styles.header}>
         <Text style={styles.title}>Trợ Lý Gợi Ý</Text>
-        <Text style={styles.subtitle}>Thực đơn thiết kế riêng cho bạn</Text>
+        <Text style={styles.subtitle}>Thực đơn thiết kế riêng cho bạn 🥝</Text>
       </View>
 
       {/* KHU VỰC MASCOT CHAT BUBBLE */}
@@ -167,7 +168,7 @@ export default function AiSuggestScreen() {
           </TouchableOpacity>
         ))}
       </View>
-{/* NÚT BẤM ĐÃ TỐI ƯU - BỎ VÒNG XOAY */}
+{/* NÚT BẤM TẠO THỰC ĐƠN */}
       <TouchableOpacity 
         style={[styles.button, loading && { opacity: 0.7 }]} 
         onPress={handleGetSuggestion} 
@@ -186,10 +187,10 @@ export default function AiSuggestScreen() {
             style={[styles.animatedMascot, { transform: [{ scale: scaleAnim }] }]} 
           />
           <Text style={styles.loadingTextHighlight}>WiKi đang vắt óc suy nghĩ...</Text>
-          <Text style={styles.loadingSubText}>Vui lòng chờ khoảng 10-15 giây nhé!</Text>
+          <Text style={styles.loadingSubText}>Vui lòng chờ khoảng 10-15 giây nhé! 🥝</Text>
         </View>
       )}
-
+{/* HIỂN THỊ DANH SÁCH KẾT QUẢ GỢI Ý TỪ AI */}
       {!loading && suggestions.length > 0 && (
         <View style={styles.resultContainer}>
           <Text style={styles.cardTitle}>✨ Món ngon WiKi đề xuất:</Text>

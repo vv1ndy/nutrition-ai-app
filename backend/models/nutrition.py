@@ -8,7 +8,7 @@ class TargetNutri(Base):
 
     target_nutri_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("user.user_id", ondelete="CASCADE"), nullable=False)
-    target_calories = Column(DECIMAL(6, 2), nullable=False)
+    target_calories = Column(DECIMAL(6, 2), default=2000)
     target_protein = Column(DECIMAL(6, 2), default=0)
     target_carb = Column(DECIMAL(6, 2), default=0)
     target_fat = Column(DECIMAL(6, 2), default=0)

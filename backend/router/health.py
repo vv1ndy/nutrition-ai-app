@@ -131,29 +131,25 @@ async def exchange_strava_token(
             )
             res_data = response.json()
             
-            if "access_token" in res_data:
-                access_token = res_data["access_token"]
-                user = db.query(User).filter(User.user_id == user_id).first()
-                if user:
-                    user.strava_token = access_token
-                    user.strava_refresh_token = res_data.get("refresh_token")
-                    user.strava_expires_at = res_data.get("expires_at")
-                    db.commit()
-                return {"status": "success", "message": "Đã liên kết Strava!"}
-            else:
-                raise HTTPException(status_code=400, detail="Không thể đổi token")
+            
     except Exception as e:
         print(f"🔥 LỖI STRAVA: {str(e)}") 
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
+#get_valid_strava_token này được gọi chạy tự động mỗi khi có yêu cầu tải danh sách hoạt động 
+#ở luồng đồng bộ Strava (/strava-activities). Nhờ vậy, tiến trình làm mới token diễn ra 
+#hoàn toàn trong nền và người dùng sẽ không phải thao tác cấp quyền lại từ đầu.
 async def get_valid_strava_token(user: User, db: Session):
     if not user.strava_token:
         return None
     current_time = int(time.time())
+    #Kiểm tra thời gian hết hạn của token. Nếu token vẫn còn hạn sử dụng 
+    #(cụ thể là chưa tới thời điểm hết hạn trừ đi 300 giây), 
+    #hệ thống sẽ trả về token cũ để tiếp tục sử dụng.
     if user.strava_expires_at and current_time < (user.strava_expires_at - 300):
         return user.strava_token
-        
+    #Nếu token hết hạn, hàm sẽ sử dụng strava_refresh_token để gọi API client.post của Strava
+    #cung cấp nhằm xin token mới
     if user.strava_refresh_token:
         try:
             async with httpx.AsyncClient() as client:
@@ -167,6 +163,7 @@ async def get_valid_strava_token(user: User, db: Session):
                     }
                 )
                 res_data = response.json()
+                #Ghi đè các strava_token, strava_refresh_token, strava_expires_at vào DB
                 if "access_token" in res_data:
                     user.strava_token = res_data["access_token"]
                     user.strava_refresh_token = res_data.get("refresh_token")
@@ -187,11 +184,10 @@ async def get_strava_activities(
     user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Bọc TOÀN BỘ hàm vào try...except để không lọt bất kỳ lỗi 500 nào
     try:
         user = db.query(User).filter(User.user_id == user_id).first()
         
-        # CHỈ ĐỒNG BỘ STRAVA KHI Ở TRANG ĐẦU TIÊN (skip == 0) ĐỂ TRÁNH QUÁ TẢI API
+        # Chỉ đồng bộ từ Strava khi kéo mới ở trang đầu (skip == 0)
         if skip == 0 and user:
             valid_token = await get_valid_strava_token(user, db)
             if valid_token:
@@ -204,97 +200,131 @@ async def get_strava_activities(
                         
                         if response.status_code == 200:
                             strava_activities = response.json()
-                            strava_ids = [str(act.get("id")) for act in strava_activities if act.get("id")]
                             
-                            existing_records = db.query(Activity.external_id).filter(
-                                Activity.user_id == user_id, 
-                                Activity.source == "STRAVA",
-                                Activity.external_id.in_(strava_ids)
-                            ).all()
-                            
-                            existing_id_set = {record[0] for record in existing_records}
-                            
-                            nutri_cache = {} 
-                            
-                            for act in strava_activities:
-                                external_id = str(act.get("id"))
-                                if external_id not in existing_id_set:
-                                    loai_bai_tap = act.get("name", "Strava Activity")
-                                    thoi_luong_phut = act.get("moving_time", 0) // 60
+                            if strava_activities:
+                                # 1. BƯỚC GOM DATA: Lấy danh sách ID và danh sách Ngày
+                                strava_ids = [str(act.get("id")) for act in strava_activities if act.get("id")]
+                                act_dates = set()
+                                
+                                for act in strava_activities:
+                                    clean_date = act.get("start_date_local", "").replace("Z", "")#Ngăn server bị sập khi đọc thời gian từ Strava
+                                    try:
+                                        act_dates.add(datetime.fromisoformat(clean_date).date())
+                                    except:
+                                        act_dates.add(date.today())
+
+                                # 2. BƯỚC QUERY 1 LẦN DUY NHẤT: Chống lặp Activity
+                                existing_records = db.query(Activity.external_id).filter(
+                                    Activity.user_id == user_id, 
+                                    Activity.source == "STRAVA",
+                                    Activity.external_id.in_(strava_ids)
+                                ).all()
+                                existing_id_set = {record[0] for record in existing_records}
+                                
+                                # 3. BƯỚC QUERY 1 LẦN DUY NHẤT: Lấy bảng Nutri
+                                existing_nutris = db.query(Nutri).filter(
+                                    Nutri.user_id == user_id,
+                                    Nutri.date_log.in_(list(act_dates))
+                                ).all()
+                                nutri_dict = {n.date_log: n for n in existing_nutris}
+
+                                # 🔥 Kéo toàn bộ từ điển bài tập 1 LẦN DUY NHẤT
+                                all_activities_dic = db.query(ActivityDic).all()
+                                met_dict = {act.exercise_key: act.met for act in all_activities_dic}
+
+                                # Ánh xạ từ loại bài tập của Strava (Tiếng Anh) sang exercise_key của hệ thống
+                                strava_to_key_map = {
+                                    "Run": "chay_bo_vua",
+                                    "Ride": "dap_xe_nhe",
+                                    "Walk": "di_bo_binh_thuong",
+                                    "Swim": "boi_loi_nhe",
+                                    "WeightTraining": "tap_ta_nhe",
+                                    "Badminton": "cau_long",
+                                    "Tennis": "tennis",
+                                    "TableTennis": "bong_ban",
+                                    "Soccer": "bong_da",
+                                    "Basketball": "bong_ro",
+                                    "Golf": "golf",
+                                    "InlineSkate": "truot_patin",
+                                    "IceSkate": "truot_bang",
+                                    "Pickleball": "pickleball",
+                                    "Pilates": "pilates",
+                                    "Yoga": "yoga",
+                                    "Workout": "bodyweight",         # Thường Strava dùng Workout cho các bài tập chung/Cardio/HIIT
+                                    "Crossfit": "hiit",              # Ánh xạ tương đối sang HIIT
+                                    "Elliptical": "may_elip",
+                                    "StairStepper": "leo_cau_thang"
+                                }
+
+                                # 4. BƯỚC XỬ LÝ LOGIC TÍNH CALO
+                                for act in strava_activities:
+                                    external_id = str(act.get("id"))
                                     
-                                    # ... (Giữ nguyên đoạn tính toán calo_tieu_thu, met, weight_kg...)
-                                    strava_calories = act.get("calories", 0)
-                                    if not strava_calories:
-                                        strava_calories = act.get("kilojoules", 0) * 0.239006
-                                    
-                                    calo_tieu_thu = float(strava_calories)
-                                    if calo_tieu_thu == 0 and thoi_luong_phut > 0:
-                                        strava_type = act.get("type", "Workout")
-                                        met = 5.0
-                                        if strava_type == "Run": met = 7.0
-                                        elif strava_type == "Ride": met = 6.0
-                                        elif strava_type == "Walk": met = 3.5
-                                        elif strava_type == "Swim": met = 7.0
-                                        elif strava_type == "WeightTraining": met = 6.0
+                                    if external_id not in existing_id_set:
+                                        loai_bai_tap = act.get("name", "Strava Activity")
+                                        thoi_luong_phut = act.get("moving_time", 0) // 60
+                                        #Lấy calo trực tiếp từ strava
+                                        strava_calories = act.get("calories", 0)
+                                        if not strava_calories:
+                                            strava_calories = act.get("kilojoules", 0) * 0.239006
                                         
-                                        weight_kg = getattr(user, "weight", 60.0) if user else 60.0
-                                        calo_tieu_thu = thoi_luong_phut * ((met * 3.5 * weight_kg) / 200)
-                                    
-                                    start_date_str = act.get("start_date_local")
-                                    create_at_time = datetime.now()
-                                    if start_date_str:
+                                        calo_tieu_thu = float(strava_calories)
+                                        
+                                        # 🔥 TÍNH CALO DỰA THEO MET LẤY TỪ DATABASE nếu không lấy được calo trực tiếp từ strava
+                                        if calo_tieu_thu == 0 and thoi_luong_phut > 0:
+                                            strava_type = act.get("type", "Workout")
+                                            
+                                            mapped_key = strava_to_key_map.get(strava_type, "bodyweight")
+                                            met = met_dict.get(mapped_key, 5.0) 
+                                            
+                                            weight_kg = getattr(user, "weight", 60.0) if user else 60.0
+                                            calo_tieu_thu = thoi_luong_phut * ((met * 3.5 * weight_kg) / 200)
+                                        
+                                        clean_date = act.get("start_date_local", "").replace("Z", "")#Ngăn server bị sập khi đọc date từ Strava
                                         try:
-                                            clean_date = start_date_str.replace("Z", "")
                                             create_at_time = datetime.fromisoformat(clean_date)
-                                        except Exception:
-                                            pass
-                                    
-                                    act_date = create_at_time.date()
-                                    
-                                    # Lưu Activity
-                                    new_act = Activity(
-                                        user_id=user_id,
-                                        loai_bai_tap=loai_bai_tap,
-                                        thoi_luong_phut=thoi_luong_phut,
-                                        calo_tieu_thu=round(calo_tieu_thu, 2),
-                                        source="STRAVA",
-                                        external_id=external_id,
-                                        create_at=create_at_time
-                                    )
-                                    db.add(new_act)
-                                    
-                                    # 2. XỬ LÝ NUTRI VỚI BỘ NHỚ TẠM
-                                    # Kiểm tra xem ngày này đã có trong bộ nhớ tạm chưa
-                                    if act_date not in nutri_cache:
-                                        # Nếu chưa, thử tìm trong DB
-                                        existing_nutri = db.query(Nutri).filter(
-                                            Nutri.user_id == user_id, 
-                                            Nutri.date_log == act_date
-                                        ).first()
+                                        except:
+                                            create_at_time = datetime.now()
                                         
-                                        if existing_nutri:
-                                            nutri_cache[act_date] = existing_nutri
+                                        act_date = create_at_time.date()
+                                        
+                                        # Thêm bài tập mới
+                                        new_act = Activity(
+                                            user_id=user_id,
+                                            loai_bai_tap=loai_bai_tap,
+                                            thoi_luong_phut=thoi_luong_phut,
+                                            calo_tieu_thu=round(calo_tieu_thu, 2),
+                                            source="STRAVA",
+                                            external_id=external_id,
+                                            create_at=create_at_time
+                                        )
+                                        db.add(new_act)
+                                        
+                                        # Cộng dồn Calo vào bảng Nutri chuẩn xác
+                                        if act_date in nutri_dict:
+                                            current_calo = nutri_dict[act_date].calo_the_duc or 0
+                                            nutri_dict[act_date].calo_the_duc = float(current_calo) + float(calo_tieu_thu)
                                         else:
-                                            # Nếu DB cũng chưa có, tạo mới và lưu vào DB + Bộ nhớ tạm
                                             new_nutri = Nutri(
                                                 user_id=user_id,
                                                 date_log=act_date,
-                                                calo_the_duc=0 # Khởi tạo calo = 0
+                                                calo_the_duc=round(calo_tieu_thu, 2)
                                             )
                                             db.add(new_nutri)
-                                            nutri_cache[act_date] = new_nutri
+                                            nutri_dict[act_date] = new_nutri 
                                             
-                                    # 3. CỘNG DỒN CALO VÀO BẢN GHI TRONG BỘ NHỚ TẠM
-                                    current_calo_td = nutri_cache[act_date].calo_the_duc or 0
-                                    nutri_cache[act_date].calo_the_duc = float(current_calo_td) + float(calo_tieu_thu)
-                            
-                            # 4. CHỈ COMMIT MỘT LẦN DUY NHẤT SAU KHI KẾT THÚC VÒNG LẶP
-                            db.commit()
+                                # 5. COMMIT CHỐT SỔ TẤT CẢ VÀ CÓ ROLLBACK AN TOÀN
+                                try:
+                                    db.commit()
+                                except Exception as e:
+                                    db.rollback() 
+                                    logger.warning(f"Lỗi đồng bộ Strava: {e}")
+                                    traceback.print_exc()
                 except Exception as e:
-                    logger.warning(f"Lỗi đồng bộ Strava: {e}")
-                    traceback.print_exc() # Thêm dòng này để nếu API Strava lỗi, nó cũng báo chi tiết
+                    logger.warning(f"Lỗi gọi API Strava: {e}")
+                    traceback.print_exc()
 
-        # Truy vấn có áp dụng phân trang
+        # Truy vấn có áp dụng phân trang để trả về cho App
         db_activities = db.query(Activity).filter(
             Activity.user_id == user_id
         ).order_by(Activity.create_at.desc()).offset(skip).limit(limit).all()
@@ -304,7 +334,6 @@ async def get_strava_activities(
             formatted_activities.append({
                 "name": act.loai_bai_tap,
                 "distance": 0, 
-                #Thêm 'or 0' để chặn lỗi float(None)
                 "calories": float(act.calo_tieu_thu or 0),
                 "type": act.source,
                 "start_date": act.create_at.isoformat() if act.create_at else None

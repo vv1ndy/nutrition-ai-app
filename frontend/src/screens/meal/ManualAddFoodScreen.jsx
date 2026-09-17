@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image } from 'react-native';
 import apiClient from '../../api/client'; 
+import { AuthContext } from '../../context/AuthContext';
+import { jwtDecode } from 'jwt-decode';
 
 export default function ManualAddFoodScreen({ navigation }) {
   const [foodName, setFoodName] = useState('');
@@ -10,13 +12,13 @@ export default function ManualAddFoodScreen({ navigation }) {
   const [unit, setUnit] = useState(''); 
   const [weightPerUnit, setWeightPerUnit] = useState(0); 
   
-  // Lưu chỉ số gốc (cho 1 khẩu phần) để nhân lên khi bấm Stepper
+  // Lưu chỉ số gốc (cho 1 khẩu phần) để nhân lên 
   const [baseMacros, setBaseMacros] = useState({ calories: 0, protein: 0, carb: 0, fat: 0 });
   
   // AI Advice
   const [aiAdvice, setAiAdvice] = useState('');
   
-  const [mealType, setMealType] = useState('Lunch');
+  const [mealType, setMealType] = useState('Trưa');
   const [foodId, setFoodId] = useState(null);
   
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -24,18 +26,19 @@ export default function ManualAddFoodScreen({ navigation }) {
   const [loadingText, setLoadingText] = useState('');
   
   const funnyPhrases = [
-    "🥝 Kiwi đang lật sổ tay...",
+    "🥝 WIKI đang lật sổ tay...",
     "🔍 Đang soi lượng mỡ...",
-    "🧮 Chờ xíu, Kiwi đang tính toán...",
+    "🧮 Chờ xíu, WIKI đang tính toán...",
     "💪 Cử tạ tí trong lúc chờ nhé...",
-    "🧠 AI đang vắt óc suy nghĩ..."
+    "🧠 WIKI đang vắt óc suy nghĩ..."
   ];  
   const mealTypes = [
-    { id: 'Breakfast', label: 'Sáng' },
-    { id: 'Lunch', label: 'Trưa' },
-    { id: 'Dinner', label: 'Tối' },
-    { id: 'Snack', label: 'Phụ' },
+    { id: 'Sáng', label: 'Sáng' },
+    { id: 'Trưa', label: 'Trưa' },
+    { id: 'Tối', label: 'Tối' },
+    { id: 'Phụ', label: 'Phụ' },
   ];
+  //Xử lý hiệu ứng loading khi đang tra cứu món ăn 
   useEffect(() => {
     let interval;
     if (loadingSearch) {
@@ -52,94 +55,100 @@ export default function ManualAddFoodScreen({ navigation }) {
 
     return () => clearInterval(interval);
   }, [loadingSearch]);
+  //Hàm tra cứu tên món ăn và lấy thông số dinh dưỡng từ backend
  const handleLookup = async () => {
     if (!foodName.trim()) {
-      Alert.alert('Chưa nhập tên', 'NutriMate cần biết bạn định ăn món gì để tra cứu nha!');
+      Alert.alert('Chưa nhập tên món ăn', 'NutriMate cần biết bạn định ăn món gì để tra cứu nha!');
       return;
     }
 
     try {
       setLoadingSearch(true);
       
-      // THÊM CẤU HÌNH TIMEOUT 30 GIÂY RIÊNG CHO AI
+      // THÊM CẤU HÌNH TIMEOUT 40 GIÂY RIÊNG CHO AI
       const res = await apiClient.post('/food/manual-entry', {
         ten_mon_an: foodName,
         khau_phan: 1.0 
       }, {
-        timeout: 30000 // Bắt Frontend đợi tối đa 30 giây
+        timeout: 40000 
       });
     
     
       if (res.data && res.data.data) {
-        console.log("📦 DỮ LIỆU TỪ BACKEND:", res.data.data);// In toàn bộ dữ liệu ra log để xem Backend thực sự trả về những tên biến gì
-        const dataObj = typeof res.data.data === 'string' ? JSON.parse(res.data.data) : res.data.data;
-        const {food_id, calories, protein_g, carb_g, fat_g, unit = "phần", weight_in_grams = 100} = dataObj;
+        console.log("📦 DỮ LIỆU TỪ BACKEND:", res.data.data);// In toàn bộ dữ liệu ra log 
+        const dataObj = typeof res.data.data === 'string' ? JSON.parse(res.data.data) : res.data.data;//Đảm bảo res.data.data luôn là object
+        const {food_id, calories, protein_g, carb_g, fat_g, unit, kich_thuoc_khau_phan} = dataObj;//Bóc tách dữ liệu
         
         setBaseMacros({
-          calories: calories || 0,
-          protein: protein_g || 0,
-          carb: carb_g || 0,
-          fat: fat_g || 0
+          calories: calories ?? 0,
+          protein: protein_g ?? 0,
+          carb: carb_g ?? 0,
+          fat: fat_g ?? 0
         });
 
         setFoodId(food_id || null);
         setUnit(unit);
-        setWeightPerUnit(weight_in_grams);
         setKhauPhan(1); 
-        const actualAdvice = dataObj?.loi_khuyen
-                          || dataObj?.loi_khuyen_ai
-                          || 'Món này trông ngon quá! Nhớ ăn kèm thêm chút rau xanh cho đủ chất bạn nhé!';
-        // Đã đảm bảo dùng đúng biến loi_khuyen
+        const actualAdvice = dataObj.loi_khuyen
+                          || 'Món này rất ngon đấy! Chúc bạn ngon miệng nhé!';
         setAiAdvice(actualAdvice);
       }
     } catch (error) {
-      // IN ĐÚNG THÔNG ĐIỆP LỖI CỦA JAVASCRIPT ĐỂ DỄ BẮT BỆNH VỀ SAU
+      // IN ĐÚNG THÔNG ĐIỆP LỖI CỦA JAVASCRIPT ĐỂ DỄ BẮT LỖI 
       console.log("CHI TIẾT LỖI:", error.message || error);
-      Alert.alert('Không tìm thấy', 'Hệ thống chưa nhận diện được món này. Bạn có thể tự nhập tay số liệu bên dưới nhé.');
+      Alert.alert('Không tìm thấy', 'NutriMate chưa tra cứu được món này. Bạn vui lòng thử lại nhé.');
     } finally {
       setLoadingSearch(false);
     }
   };
-  const handleKhauPhanChange = (type) => {
-    if (type === 'minus' && khauPhan > 0.5) {
-      setKhauPhan(prev => prev - 0.5);
-    } else if (type === 'plus') {
-      setKhauPhan(prev => prev + 0.5);
-    }
-  };
+
 
   const handleSaveManual = async () => {
-    const finalCalories = baseMacros.calories * khauPhan;
     
+    const currentMultiplier = parseFloat(khauPhan) || 1;
+    const finalCalories = baseMacros.calories * currentMultiplier;
+    let displayUnit = unit || 'phần';
+      if (displayUnit.startsWith('1 ')) {
+        displayUnit = displayUnit.substring(2);
+      }
+      //Bóc tách số và đơn vị ra để nhân với currentMultiplier, làm tròn kết quả và giữ nguyên đơn vị gốc (g, ml,...)
+      displayUnit = displayUnit.replace(/(\d+)(\s*(?:g|ml))/i, (match, number, unitText) => {
+        // number sẽ lấy được số, unitText lấy được chữ "g" hoặc "ml"
+        const newWeight = Math.round(parseFloat(number) * currentMultiplier);
+        return `${newWeight}${unitText}`;
+      });
+    if (currentMultiplier !== 1) {
+        displayUnit = displayUnit.replace(/khoảng|~/i, 'tổng khoảng');
+      }
     if (!foodName.trim() || finalCalories === 0) {
       Alert.alert('Thiếu thông tin', 'Vui lòng đảm bảo đã có tên món ăn và lượng calo > 0 nhé!');
       return;
     }
-
+    const tenMonHoanChinh = `${foodName.trim()} (${currentMultiplier} ${displayUnit})`;
     try {
       setLoadingSave(true);
       const localDate = new Date();
       const ngayAn = new Date(localDate.getTime() - (localDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
       const payload = {
-        user_id: 8, 
         loai_bua_an: mealType,
         ngay_an: ngayAn,
-        ten_mon_an: foodName,
-        so_luong_khau_phan: parseFloat(khauPhan),
+        ten_mon_an: tenMonHoanChinh,
+        so_luong_khau_phan: currentMultiplier,
         meal_calories: finalCalories,
-        meal_protein_g: baseMacros.protein * khauPhan,
-        meal_carb_g: baseMacros.carb * khauPhan,
-        meal_fat_g: baseMacros.fat * khauPhan,
+        meal_protein_g: baseMacros.protein * currentMultiplier,
+        meal_carb_g: baseMacros.carb * currentMultiplier,
+        meal_fat_g: baseMacros.fat * currentMultiplier,
         image_url: null, 
         food_id: foodId,
         loi_khuyen: aiAdvice
       };
 
       await apiClient.post('/meals', payload);
+      console.log("PAYLOAD TRƯỚC KHI GỬI:", payload);
       
       Alert.alert('Hoan hô! 🎉', 'NutriMate đã ghi chú món ăn này vào sổ tay của bạn rồi!', [
-        { text: 'Tuyệt vời', onPress: () => navigation.goBack() } 
+        { text: 'Xem nhật ký', onPress: () => navigation.navigate('FoodLog') } 
       ]);
 
     } catch (error) {
@@ -152,25 +161,27 @@ export default function ManualAddFoodScreen({ navigation }) {
 
   return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      <Text style={styles.headerTitle}>Ghi Chép Bữa Ăn 🍱</Text>
+      <Text style={styles.headerTitle}>Nhập Món Ăn 🍱</Text>
       
       {/* KHỐI 1: TÌM KIẾM MÓN ĂN */}
       <View style={styles.searchSection}>
         <Text style={styles.label}>Hôm nay bạn ăn món gì thế? <Text style={{color: '#e53935'}}>*</Text></Text>
         <TextInput 
           style={styles.inputSearch} 
-          placeholder="VD: Cơm trắng, Trứng gà luộc..." 
+          placeholder="VD: Phở bò, Cơm gà xối mỡ,..." 
           value={foodName} 
           onChangeText={setFoodName} 
         />
         <TouchableOpacity style={styles.lookupButton} onPress={handleLookup} disabled={loadingSearch}>
-          {loadingSearch ? (
+          {loadingSearch ? 
+          (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <ActivityIndicator color="#fff" size="small" style={{ marginRight: 10 }} />
               <Text style={styles.lookupButtonText}>{loadingText}</Text>
             </View>
-          ) : (
-            <Text style={styles.lookupButtonText}>✨ Trợ lý phân tích (AI/DB)</Text>
+          ) : 
+          (
+            <Text style={styles.lookupButtonText}>🥝 Để WIKI tìm kiếm nhé! </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -182,49 +193,58 @@ export default function ManualAddFoodScreen({ navigation }) {
           <View style={styles.mascotAdviceSection}>
             <Image source={require('../../../assets/mascot.png')} style={styles.mascotImgLarge} />
             <View style={styles.bubbleAdvice}>
-              <Text style={styles.bubbleTitle}>Kiwi Lực Điền khuyên:</Text>
+              <Text style={styles.bubbleTitle}>WIKI Lực Điền khuyên:</Text>
               <Text style={styles.bubbleText}>{aiAdvice}</Text>
             </View>
           </View>
 
-          {/* KHỐI 2: CHỌN ĐỊNH LƯỢNG KÈM KIWI HƯỚNG DẪN */}
+          {/* KHỐI 2: CHỌN ĐỊNH LƯỢNG */}
           <View style={styles.card}>
             <View style={styles.stepperHeader}>
               <Text style={styles.label}>Định lượng (Khẩu phần)</Text>
-              {/* Lời nhắc nhỏ của Mascot */}
+              
+              {/* Mascot báo định lượng chuẩn của 1 phần */}
               <View style={styles.miniMascotGuide}>
                 <Image source={require('../../../assets/mascot.png')} style={styles.mascotImgMini} />
                 <View style={styles.miniBubble}>
-                  <Text style={styles.miniBubbleText}>Bấm + / - để chỉnh lượng ăn nhé!</Text>
+                  <Text style={styles.miniBubbleText}>
+                    1 phần chuẩn = {unit} 
+                  </Text>
                 </View>
               </View>
             </View>
 
-            <View style={styles.stepperContainer}>
-              <TouchableOpacity style={styles.stepperBtn} onPress={() => handleKhauPhanChange('minus')}>
-                <Text style={styles.stepperBtnText}>-</Text>
-              </TouchableOpacity>
-              
-              <View style={styles.stepperValueBox}>
-                <Text style={styles.stepperValueText}>{khauPhan}</Text>
-                {unit ? (
-                  <Text style={styles.stepperUnitText}>{unit} ({weightPerUnit * khauPhan}g)</Text>
-                ) : (
-                  <Text style={styles.stepperUnitText}>phần</Text>
-                )}
-              </View>
-              
-              <TouchableOpacity style={styles.stepperBtn} onPress={() => handleKhauPhanChange('plus')}>
-                <Text style={styles.stepperBtnText}>+</Text>
-              </TouchableOpacity>
+            {/* Các nút chọn nhanh hệ số */}
+            <View style={styles.presetRow}>
+              {[0.5, 1.0, 1.5, 2.0].map((val) => (
+                <TouchableOpacity 
+                  key={val} 
+                  style={[styles.presetBtn, parseFloat(khauPhan) === val && styles.presetBtnActive]} 
+                  onPress={() => setKhauPhan(val.toString())}
+                >
+                  <Text style={[styles.presetBtnText, parseFloat(khauPhan) === val && styles.presetBtnTextActive]}>
+                    {/*Hiển thị dấu x & số khẩu phần trong các nút*/}
+                    x{val}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
+
+            {/* Ô nhập tay hệ số */}
+            <TextInput 
+              keyboardType="numeric" 
+              onChangeText={setKhauPhan} 
+              placeholder="Hoặc tự nhập số (VD: 0.8)" 
+              style={styles.input} 
+              value={khauPhan.toString()}
+            />
           </View>
         </>
       )}
 
       {/* KHỐI 3: LOẠI BỮA ĂN & THÔNG SỐ */}
       <View style={styles.card}>
-        <Text style={styles.label}>Đây là bữa nào trong ngày?</Text>
+        <Text style={styles.label}>Đây là bữa ăn nào trong ngày?</Text>
         <View style={styles.mealTypeContainer}>
           {mealTypes.map((type) => (
             <TouchableOpacity
@@ -232,24 +252,29 @@ export default function ManualAddFoodScreen({ navigation }) {
               style={[styles.typeButton, mealType === type.id && styles.typeButtonActive]}
               onPress={() => setMealType(type.id)}
             >
-              <Text style={[styles.typeText, mealType === type.id && styles.typeTextActive]}>{type.label}</Text>
+              
+              <Text style={[styles.typeText, mealType === type.id && styles.typeTextActive]}>
+                {/*Hiển thị tên bữa ăn trong 4 nút*/}
+                {type.label}
+                </Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Hiện thông số Calo & Macros */}
         <View style={styles.statsBox}>
-          <Text style={styles.statsMain}>🔥 {(baseMacros.calories * khauPhan).toFixed(0)} Kcal</Text>
+          <Text style={styles.statsMain}>🔥 {(baseMacros.calories * (parseFloat(khauPhan) || 0)).toFixed(0)} Kcal</Text>
           <View style={styles.macroRow}>
-            <Text style={styles.macroText}>🥩 Pro: {(baseMacros.protein * khauPhan).toFixed(1)}g</Text>
-            <Text style={styles.macroText}>🍚 Carb: {(baseMacros.carb * khauPhan).toFixed(1)}g</Text>
-            <Text style={styles.macroText}>🥑 Fat: {(baseMacros.fat * khauPhan).toFixed(1)}g</Text>
+            <Text style={styles.macroText}>🥩 Pro: {(baseMacros.protein * (parseFloat(khauPhan) || 0)).toFixed(1)}g</Text>
+            <Text style={styles.macroText}>🍚 Carb: {(baseMacros.carb * (parseFloat(khauPhan) || 0)).toFixed(1)}g</Text>
+            <Text style={styles.macroText}>🥑 Fat: {(baseMacros.fat * (parseFloat(khauPhan) || 0)).toFixed(1)}g</Text>
           </View>
         </View>
       </View>
 
       <TouchableOpacity style={styles.saveButton} onPress={handleSaveManual} disabled={loadingSave}>
-        {loadingSave ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Ghi vào Nhật ký ngay!</Text>}
+       {/*Hiển thị ActivityIndicator khi đang lưu, ngược lại hiển thị text "Xác Nhận & Lưu Lịch Sử" */}
+        {loadingSave ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>💾 Xác Nhận & Lưu Lịch Sử</Text>}
       </TouchableOpacity>
       
       <View style={{height: 30}} />
@@ -259,7 +284,7 @@ export default function ManualAddFoodScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { padding: 16, backgroundColor: '#FDFDFD', flexGrow: 1 },
-  headerTitle: { fontSize: 24, fontWeight: '900', color: '#689F38', marginBottom: 20, textAlign: 'center' }, // Chỉnh màu xanh mượt hơn của Kiwi
+  headerTitle: { fontSize: 24, fontWeight: '900', color: '#689F38', marginBottom: 20, textAlign: 'center' }, // Chỉnh màu xanh mượt hơn của WIKI
   
   card: { backgroundColor: '#fff', padding: 16, borderRadius: 20, marginBottom: 16, shadowColor: '#689F38', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
   
@@ -279,19 +304,11 @@ const styles = StyleSheet.create({
   bubbleText: { fontSize: 14, color: '#1B5E20', lineHeight: 22, fontWeight: '500' },
   
   // Mini Mascot Guide (Hướng dẫn chỉnh khẩu phần)
-  stepperHeader: { marginBottom: 12 },
+ 
   miniMascotGuide: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
   mascotImgMini: { width: 28, height: 28, marginRight: 8, resizeMode: 'contain' },
   miniBubble: { backgroundColor: '#FFF3E0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderTopLeftRadius: 0 },
   miniBubbleText: { fontSize: 12, color: '#E65100', fontWeight: '700' },
-
-  // Stepper Styles
-  stepperContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFAFA', borderRadius: 16, padding: 8, borderWidth: 1, borderColor: '#E0E0E0' },
-  stepperBtn: { width: 50, height: 50, backgroundColor: '#fff', borderRadius: 12, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3, borderWidth: 1, borderColor: '#F5F5F5' },
-  stepperBtnText: { fontSize: 26, fontWeight: 'bold', color: '#7CB342' }, // Đổi màu dấu cộng trừ sang xanh Kiwi
-  stepperValueBox: { flex: 1, alignItems: 'center' },
-  stepperValueText: { fontSize: 26, fontWeight: '900', color: '#33691E' },
-  stepperUnitText: { fontSize: 14, color: '#757575', marginTop: 2, fontWeight: '500' },
   
   // Meal Type Styles
   mealTypeContainer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
@@ -308,5 +325,18 @@ const styles = StyleSheet.create({
   
   // Save Button
   saveButton: { backgroundColor: '#558B2F', padding: 18, borderRadius: 18, alignItems: 'center', shadowColor: '#558B2F', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 6 },
-  saveButtonText: { color: '#fff', fontSize: 18, fontWeight: '900' }
+  saveButtonText: { color: '#fff', fontSize: 18, fontWeight: '900' },
+
+  // Preset Buttons Styles
+  presetRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  presetBtn: { flex: 1, backgroundColor: '#F1F8E9', paddingVertical: 12, borderRadius: 12, marginHorizontal: 4, alignItems: 'center', borderWidth: 1, borderColor: '#DCEDC8' },
+  presetBtnActive: { backgroundColor: '#7CB342', borderColor: '#7CB342' },
+  presetBtnText: { color: '#558B2F', fontWeight: 'bold', fontSize: 16 },
+  presetBtnTextActive: { color: '#fff' },
+  
+  // Input Styles
+  input: { backgroundColor: '#F9FBE7', borderWidth: 1, borderColor: '#E6EE9C', borderRadius: 12, padding: 14, fontSize: 16, color: '#33691E', fontWeight: 'bold', textAlign: 'center' },
+  
+  // Total Weight Display
+  totalWeightText: { textAlign: 'center', marginTop: 12, fontSize: 14, color: '#E65100', fontWeight: '800' },
 });
